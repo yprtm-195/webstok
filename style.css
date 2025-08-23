@@ -1,6 +1,6 @@
 body {
-      background-color: #f8f9fa;
-    }
+    color: white;
+}
     .container {
       max-width: 960px;
     }
@@ -18,3 +18,7 @@ body {
       object-fit: contain;
       border-radius: 0.375rem;
     }
+
+th, td {
+  vertical-align: middle;
+}
