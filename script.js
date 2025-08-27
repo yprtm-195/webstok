@@ -299,7 +299,32 @@ function downloadAsCsv(fileName) {
 
 // --- Event Listeners ---
 document.addEventListener('DOMContentLoaded', () => {
-  loadInitialData();
+  loadInitialData().then(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const branchCode = urlParams.get('branch');
+    const storeCode = urlParams.get('store');
+
+    if (branchCode && storeCode) {
+      const branchSelect = document.getElementById('branch');
+      const storeInput = document.getElementById('store');
+      const downloadLaporanBtn = document.getElementById('downloadLaporan');
+
+      branchSelect.value = branchCode;
+      
+      const store = allStores.find(s => s.code === storeCode);
+      if (store) {
+        storeInput.value = `${store.code} - ${store.name}`;
+      } else {
+        storeInput.value = storeCode;
+      }
+      
+      if (downloadLaporanBtn) {
+        setTimeout(() => {
+          downloadLaporanBtn.click();
+        }, 500);
+      }
+    }
+  });
 
   // Listener for index.html
   const cekStokBtn = document.getElementById('cekStok');
