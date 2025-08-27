@@ -307,10 +307,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (branchCode && storeCode) {
       const branchSelect = document.getElementById('branch');
       const storeInput = document.getElementById('store');
-      const downloadLaporanBtn = document.getElementById('downloadLaporan');
 
       branchSelect.value = branchCode;
-      
+
       const store = allStores.find(s => s.code === storeCode);
       if (store) {
         storeInput.value = `${store.code} - ${store.name}`;
@@ -318,11 +317,10 @@ document.addEventListener('DOMContentLoaded', () => {
         storeInput.value = storeCode;
       }
       
-      if (downloadLaporanBtn) {
-        setTimeout(() => {
-          downloadLaporanBtn.click();
-        }, 500);
-      }
+      // Directly call the download logic instead of simulating a click
+      hasAutoRefreshed = false;
+      currentProductData = [];
+      executeStokCheck(true); // true for download
     }
   });
 
