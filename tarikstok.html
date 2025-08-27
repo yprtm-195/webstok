@@ -69,5 +69,40 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <script src="script.js"></script>
+
+  <!-- SCRIPT OTOMATISASI DARI GEMINI -->
+  <script>
+    // Jalankan skrip setelah semua halaman selesai di-load
+    window.onload = function() {
+        // 1. Ambil parameter dari URL
+        const params = new URLSearchParams(window.location.search);
+        const kodeCabang = params.get('cabang'); // misal: ?cabang=C01
+        const kodeToko = params.get('toko');     // misal: &toko=T02
+
+        // Kalo parameter cabang & toko ada di URL, baru jalanin otomatisasi
+        if (kodeCabang && kodeToko) {
+            // 2. Cari elemen-elemen di halaman HTML
+            const dropdownCabang = document.getElementById('branch');
+            const inputToko = document.getElementById('store');
+            const tombolTarik = document.getElementById('downloadLaporan');
+
+            if (dropdownCabang && inputToko && tombolTarik) {
+                // 3. Set nilai dropdown cabang
+                dropdownCabang.value = kodeCabang;
+
+                // 4. PENTING: Picu event 'change' di dropdown
+                dropdownCabang.dispatchEvent(new Event('change'));
+
+                // 5. Set nilai input kode toko
+                inputToko.value = kodeToko;
+
+                // 6. Klik tombol tarik secara otomatis
+                tombolTarik.click();
+            }
+        }
+    };
+  </script>
+  <!-- AKHIR SCRIPT OTOMATISASI -->
+
 </body>
 </html>
