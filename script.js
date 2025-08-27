@@ -305,22 +305,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const storeCode = urlParams.get('store');
 
     if (branchCode && storeCode) {
-      const branchSelect = document.getElementById('branch');
-      const storeInput = document.getElementById('store');
+      // Defer execution to allow the DOM to update with new <option>s
+      setTimeout(() => {
+        const branchSelect = document.getElementById('branch');
+        const storeInput = document.getElementById('store');
 
-      branchSelect.value = branchCode;
+        branchSelect.value = branchCode;
 
-      const store = allStores.find(s => s.code === storeCode);
-      if (store) {
-        storeInput.value = `${store.code} - ${store.name}`;
-      } else {
-        storeInput.value = storeCode;
-      }
-      
-      // Directly call the download logic instead of simulating a click
-      hasAutoRefreshed = false;
-      currentProductData = [];
-      executeStokCheck(true); // true for download
+        const store = allStores.find(s => s.code === storeCode);
+        if (store) {
+          storeInput.value = `${store.code} - ${store.name}`;
+        } else {
+          storeInput.value = storeCode;
+        }
+        
+        // Verify that the branch was actually selected before proceeding
+        if (branchSelect.value === branchCode && storeInput.value) {
+            hasAutoRefreshed = false;
+            currentProductData = [];
+            executeStokCheck(true);
+        } else {
+            console.error('Failed to set branch or store. Check if codes are correct.');
+            showAlert('Gagal memulai download. Pastikan kode branch dan toko benar dan ada dalam daftar.');
+        }
+      }, 0); // Delay of 0 milliseconds
     }
   });
 
