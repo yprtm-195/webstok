@@ -63,15 +63,20 @@ function showGlobalProgressBar(percentage, message) {
     const overlay = document.getElementById('globalLoadingOverlay');
     const progressBarInner = document.getElementById('globalProgressBarInner');
     const progressMessage = document.getElementById('globalProgressMessage');
+    const progressBarText = progressBarInner ? progressBarInner.querySelector('.progress-bar-text') : null;
+    const sanitizedPercentage = Math.max(0, Math.min(100, Math.round(percentage)));
 
     if (overlay) overlay.style.display = 'flex';
     if (progressBarInner) {
-        const sanitizedPercentage = Math.max(0, Math.min(100, percentage));
         progressBarInner.style.width = `${sanitizedPercentage}%`;
         progressBarInner.setAttribute('aria-valuenow', sanitizedPercentage);
-        progressBarInner.querySelector('.progress-text').textContent = `${sanitizedPercentage}%`;
     }
-    if (progressMessage) progressMessage.textContent = message;
+    if (progressBarText) {
+        progressBarText.textContent = `${sanitizedPercentage}%`;
+    }
+    if (progressMessage) {
+        progressMessage.innerHTML = message; // Use innerHTML to render <br> tags
+    }
 }
 
 function hideGlobalProgressBar() {
@@ -159,6 +164,8 @@ function setupAutocomplete() {
     const storeInput = document.getElementById('store');
     const autocompleteList = document.getElementById('autocomplete-list');
 
+    if (!autocompleteList) return; // FIX: Exit if autocomplete list doesn't exist
+
     storeInput.addEventListener('input', () => {
         const query = storeInput.value.toLowerCase();
         if (query.length < 2) {
@@ -234,19 +241,27 @@ async function loadInitialData() {
     try {
         const branchRes = await apiFetch('getBranchList');
         if (branchRes.success) {
-            branchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
-            multiBranchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
-            branchRes.data.forEach(branch => {
-                branchSelect.innerHTML += `<option value="${branch}">${branch}</option>`;
-                multiBranchSelect.innerHTML += `<option value="${branch}">${branch}
+            // FIX: Only populate if the element is a SELECT
+            if (branchSelect && branchSelect.tagName === 'SELECT') {
+                branchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
+                branchRes.data.forEach(branch => {
+                    branchSelect.innerHTML += `<option value="${branch}">${branch}</option>`;
+                });
+                branchSelect.disabled = false;
+            }
+            if (multiBranchSelect) { // This element only exists on index.html
+                multiBranchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
+                branchRes.data.forEach(branch => {
+                    multiBranchSelect.innerHTML += `<option value="${branch}">${branch}
 </option>`;
-            });
-            branchSelect.disabled = false;
-            multiBranchSelect.disabled = false;
+                });
+                multiBranchSelect.disabled = false;
+            }
         } else {
-            branchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
-            multiBranchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
+            if (branchSelect) branchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
+            if (multiBranchSelect) multiBranchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
         }
+
 
         const storeRes = await apiFetch('getStoreList');
         if (storeRes.success) {
@@ -327,17 +342,22 @@ async function executeStokCheck(isForDownload = false) {
   if(spinner) spinner.style.display = 'inline-block';
   
   const storeName = storeInput.split(' - ')[1] || storeInput;
-  const storeCode = storeInput.split(' - ')[0];
+  const storeCode = storeInput.split(' - ')[0].trim().toUpperCase();
 
   if (!hasAutoRefreshed) {
     document.getElementById('judulStok').textContent = isForDownload ? 'Proses Download' : `Stok ${storeName}`;
   }
 
   const isFirstRun = !hasAutoRefreshed;
-  const basePercentage = isFirstRun ? 0 : 50;
 
   try {
-    showGlobalProgressBar(basePercentage + 15, `Mengambil ${isFirstRun ? '' : 'ulang '}daftar produk...`);
+    // Use different progress points for first and second run
+    if (isFirstRun) {
+      showGlobalProgressBar(10, `Mengambil daftar produk...`);
+    } else {
+      showGlobalProgressBar(60, `Mengambil ulang daftar produk untuk validasi...`);
+    }
+
     const result = await fetchAndProcessStock(branch, storeCode, storeName);
 
     if (!result.success) {
@@ -350,28 +370,31 @@ async function executeStokCheck(isForDownload = false) {
       showGlobalProgressBar(50, 'Validasi... Menjalankan pengecekan kedua.');
       setTimeout(() => executeStokCheck(isForDownload), 750);
     } else {
+      // This is the second run completion
+      showGlobalProgressBar(100, 'Selesai!'); // Always show 100% at the end
+
       console.log('DEBUG: Second run complete. Final product list:', currentProductData);
 
       if(actionBtn) actionBtn.disabled = false;
       if(spinner) spinner.style.display = 'none';
 
-      if (isForDownload) {
-        showGlobalProgressBar(100, 'Selesai!');
-        downloadAsCsv('stok.csv');
-        setTimeout(() => {
+      // Delay the final action to let the user see the 100%
+      setTimeout(() => {
+        if (isForDownload) {
+          downloadAsCsv('stok.csv');
           showSuccessAnimation('Download CSV Berhasil!');
-        }, 100); // Small delay to ensure download starts
-      } else {
-        showSuccessAnimation('Pengecekan Stok Berhasil!');
-        setTimeout(() => {
-            renderTable(currentProductData);
-            const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
-            if (collapsePilihTokoElement) {
-                const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
-                bsCollapse.hide();
-            }
-        }, 1500); // Delay for animation
-      }
+        } else {
+          showSuccessAnimation('Pengecekan Stok Berhasil!');
+          setTimeout(() => {
+              renderTable(currentProductData);
+              const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
+              if (collapsePilihTokoElement) {
+                  const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
+                  bsCollapse.hide();
+              }
+          }, 1500); // Delay for animation
+        }
+      }, 500); // 500ms delay to show 100%
     }
 
   } catch (err) {
@@ -424,7 +447,7 @@ async function executeMultiStokCheck() {
         const storeName = storeInfo ? storeInfo.name : storeCode; // Use code if name not found
 
         const currentProgress = Math.floor(((i + 1) / totalStores) * 100);
-        showGlobalProgressBar(currentProgress, `Mengecek toko ${i + 1} dari ${totalStores}: ${storeCode} - ${storeName}...`);
+        showGlobalProgressBar(currentProgress, `Mengecek toko ${i + 1} dari ${totalStores}:<br>${storeCode} - ${storeName}...`);
 
         const result = await fetchAndProcessStock(branch, storeCode, storeName);
         multiStoreCheckResults.push({
@@ -510,7 +533,7 @@ function downloadAsXlsx(fileName) {
     // This function now just calls the generic exportToExcel
     const branch = document.getElementById('branch').value;
     const storeInput = document.getElementById('store').value;
-    const storeCode = storeInput.split(' - ')[0];
+    const storeCode = storeInput.split(' - ')[0].trim().toUpperCase();
     const storeName = storeInput.split(' - ')[1] || storeInput;
     
     exportToExcel(currentProductData, branch, storeCode, storeName, fileName);
@@ -589,11 +612,37 @@ function downloadMultiStoreExcel() {
 document.addEventListener('DOMContentLoaded', () => {
     loadInitialData();
 
-    document.getElementById('cekStok').addEventListener('click', () => executeStokCheck(false));
-    document.getElementById('downloadExcel').addEventListener('click', () => downloadAsXlsx());
-    document.getElementById('downloadCsv').addEventListener('click', () => downloadAsCsv());
-    document.getElementById('cekStokMulti').addEventListener('click', executeMultiStokCheck);
-    document.getElementById('downloadMultiExcel').addEventListener('click', downloadMultiStoreExcel);
+    // Listener untuk direct.html
+    const downloadLaporanBtn = document.getElementById('downloadLaporan');
+    if (downloadLaporanBtn) {
+        downloadLaporanBtn.addEventListener('click', () => executeStokCheck(true));
+    }
+
+    // Listener untuk index.html (dibuat lebih aman)
+    const cekStokBtn = document.getElementById('cekStok');
+    if (cekStokBtn) {
+        cekStokBtn.addEventListener('click', () => executeStokCheck(false));
+    }
+    
+    const downloadExcelBtn = document.getElementById('downloadExcel');
+    if (downloadExcelBtn) {
+        downloadExcelBtn.addEventListener('click', () => downloadAsXlsx());
+    }
+
+    const downloadCsvBtn = document.getElementById('downloadCsv');
+    if (downloadCsvBtn) {
+        downloadCsvBtn.addEventListener('click', () => downloadAsCsv());
+    }
+
+    const cekStokMultiBtn = document.getElementById('cekStokMulti');
+    if (cekStokMultiBtn) {
+        cekStokMultiBtn.addEventListener('click', executeMultiStokCheck);
+    }
+
+    const downloadMultiExcelBtn = document.getElementById('downloadMultiExcel');
+    if (downloadMultiExcelBtn) {
+        downloadMultiExcelBtn.addEventListener('click', downloadMultiStoreExcel);
+    }
 
     const collapseElement = document.getElementById('collapsePilihToko');
     const collapseIcon = document.getElementById('collapseIcon');
