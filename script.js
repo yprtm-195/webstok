@@ -1,8 +1,9 @@
 const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxzf6uSbORvdU5bLk62UqAN5V2NibVpiqYvNdztzRLbIi0r0AGi49a53HZd8YVK1KY9/exec';
-const FORCE_JSONP = false; // set true kalau mau langsung pakai JSONP tanpa coba fetch
+const FORCE_JSONP = false; 
 let allStores = [];
 let hasAutoRefreshed = false;
 let currentProductData = [];
+let multiStoreCheckResults = []; // New global variable for multi-store results
 
 // --- Helper Functions ---
 function apiFetch(action, params = {}) {
@@ -22,7 +23,6 @@ function apiFetch(action, params = {}) {
         clearTimeout(timeoutId);
         try { delete window[callbackName]; } catch(_) { window[callbackName] = undefined; }
         script.remove();
-        console.debug('[apiFetch] JSONP success for action', action);
         resolve(data);
       };
       script.onerror = () => {
@@ -38,7 +38,6 @@ function apiFetch(action, params = {}) {
       }, 15000);
       script.src = url.toString();
       document.head.appendChild(script);
-      console.debug('[apiFetch] Using JSONP for action', action, '->', script.src);
     });
   }
 
@@ -59,20 +58,45 @@ function apiFetch(action, params = {}) {
     });
 }
 
+// --- Global Progress Bar Functions ---
+function showGlobalProgressBar(percentage, message) {
+    const overlay = document.getElementById('globalLoadingOverlay');
+    const progressBarInner = document.getElementById('globalProgressBarInner');
+    const progressMessage = document.getElementById('globalProgressMessage');
+
+    if (overlay) overlay.style.display = 'flex';
+    if (progressBarInner) {
+        const sanitizedPercentage = Math.max(0, Math.min(100, percentage));
+        progressBarInner.style.width = `${sanitizedPercentage}%`;
+        progressBarInner.setAttribute('aria-valuenow', sanitizedPercentage);
+        progressBarInner.querySelector('.progress-text').textContent = `${sanitizedPercentage}%`;
+    }
+    if (progressMessage) progressMessage.textContent = message;
+}
+
+function hideGlobalProgressBar() {
+    const overlay = document.getElementById('globalLoadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+// --- UI Feedback Functions ---
 function showAlert(message, type = 'danger') {
+  hideGlobalProgressBar(); // Ensure progress bar is hidden on alert
   const cardList = document.getElementById('cardList');
   cardList.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
   document.getElementById('result-card').style.display = 'block';
 }
 
-function showProgressBar(message) {
+function showSuccessAnimation(message) {
+  hideGlobalProgressBar(); // Ensure progress bar is hidden on success
   const cardList = document.getElementById('cardList');
   cardList.innerHTML = `
-    <div class="text-center my-3">
-      <p>${message}</p>
-      <div class="progress" role="progressbar" aria-label="Loading" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="height: 20px;">
-        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
-      </div>
+    <div class="success-animation">
+      <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+        <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+        <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+      </svg>
+      <p class="fs-5 mt-3">${message}</p>
     </div>
   `;
   document.getElementById('result-card').style.display = 'block';
@@ -80,246 +104,420 @@ function showProgressBar(message) {
 
 // --- UI Rendering ---
 function renderTable(data) {
-  const cardList = document.getElementById('cardList');
-  cardList.innerHTML = '';
+    const cardList = document.getElementById('cardList');
 
-  if (data.length === 0) {
-    cardList.innerHTML = '<p class="text-center text-muted">Produk datanya gagal ditarik bang kosong.</p>';
-    return;
-  }
+    if (!data || data.length === 0) {
+        cardList.innerHTML = '<p class="text-center">Tidak ada data untuk ditampilkan.</p>';
+        return;
+    }
 
-  const tableContainer = document.createElement('div');
-  tableContainer.className = 'table-responsive';
-  
-  const table = document.createElement('table');
-  table.className = 'table table-striped table-hover table-sm';
-  
-  table.innerHTML =
-    '<thead class="table-light">' +
-      '<tr>' +
-        '<th scope="col"></th>' +
-        '<th scope="col">Kode</th>' +
-        '<th scope="col">Nama Produk</th>' +
-        '<th scope="col">Stok</th>' +
-        '<th scope="col">Tag</th>' +
-        '<th scope="col">Harga</th>' +
-      '</tr>' +
-    '</thead>' +
-    '<tbody>' +
-    '</tbody>';
+    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th>Gambar</th><th>Nama Produk</th><th>Stok</th><th>Tag</th></tr></thead><tbody>';
 
-  const tbody = table.querySelector('tbody');
-  data.forEach(item => {
-    const row = tbody.insertRow();
-    row.className = item.stock === 0 ? 'table-danger' : '';
-    
-    row.innerHTML = 
-      '<td><img src="' + item.productImageThumbnail + '" alt="' + item.productName + '" class="product-img-table"></td>' +
-      '<td><span class="badge bg-secondary">' + (item.productCode || 'N/A') + '</span></td>' +
-      '<td>' + item.productName + '</td>' +
-      '<td><h5><span class="badge ' + (item.stock > 0 ? 'bg-success' : 'bg-danger') + '">' + item.stock + '</span></h5></td>' +
-      '<td>' + (item.tagProduct || '-') + '</td>' +
-      '<td>Rp ' + item.normalPrice.toLocaleString('id-ID') + '</td>';
-  });
-  
-  tableContainer.appendChild(table);
-  cardList.appendChild(tableContainer);
+    data.forEach(item => {
+        tableHtml += `
+            <tr class="${item.stock === 0 ? 'table-danger' : ''}">
+                <td><img src="${item.productImageThumbnail}" alt="${item.productName}" class="product-img-table"></td>
+                <td>${item.productName}</td>
+                <td><span class="badge bg-secondary">${item.stock}</span></td>
+                <td>${item.tagProduct}</td>
+            </tr>
+        `;
+    });
+
+    tableHtml += '</tbody></table></div>';
+    cardList.innerHTML = tableHtml;
+}
+
+function renderMultiStoreTable(data, targetElementId) {
+    const targetElement = document.getElementById(targetElementId);
+    if (!targetElement) return;
+
+    if (!data || data.length === 0) {
+        targetElement.innerHTML = '<p class="text-center">Tidak ada data untuk ditampilkan.</p>';
+        return;
+    }
+
+    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th>Gambar</th><th>Nama Produk</th><th>Stok</th><th>Tag</th></tr></thead><tbody>';
+
+    data.forEach(item => {
+        tableHtml += `
+            <tr class="${item.stock === 0 ? 'table-danger' : ''}">
+                <td><img src="${item.productImageThumbnail}" alt="${item.productName}" class="product-img-table"></td>
+                <td>${item.productName}</td>
+                <td><span class="badge bg-secondary">${item.stock}</span></td>
+                <td>${item.tagProduct}</td>
+            </tr>
+        `;
+    });
+
+    tableHtml += '</tbody></table></div>';
+    targetElement.innerHTML = tableHtml;
 }
 
 // --- Autocomplete Logic ---
 function setupAutocomplete() {
-  const storeInput = document.getElementById('store');
-  const autocompleteList = document.getElementById('autocomplete-list');
+    const storeInput = document.getElementById('store');
+    const autocompleteList = document.getElementById('autocomplete-list');
 
-  storeInput.addEventListener('input', () => {
-    const searchTerm = storeInput.value.toLowerCase();
-    if (!searchTerm) {
-      autocompleteList.innerHTML = '';
-      return;
-    }
-    const filteredStores = allStores
-      .filter(store => store.code.toLowerCase().includes(searchTerm) || store.name.toLowerCase().includes(searchTerm))
-      .slice(0, 10); // Limit results
+    storeInput.addEventListener('input', () => {
+        const query = storeInput.value.toLowerCase();
+        if (query.length < 2) {
+            autocompleteList.innerHTML = '';
+            return;
+        }
 
-    autocompleteList.innerHTML = '';
-    filteredStores.forEach(store => {
-      const item = document.createElement('a');
-      item.href = '#';
-      item.className = 'list-group-item list-group-item-action';
-      item.textContent = `${store.code} - ${store.name}`;
-      item.addEventListener('click', (e) => {
-        e.preventDefault();
-        storeInput.value = `${store.code} - ${store.name}`;
-        autocompleteList.innerHTML = '';
-      });
-      autocompleteList.appendChild(item);
+        const filteredStores = allStores.filter(store => 
+            store.name.toLowerCase().includes(query) || store.code.toLowerCase().includes(query)
+        );
+
+        let listHtml = '';
+        filteredStores.slice(0, 5).forEach(store => {
+            listHtml += `<a href="#" class="list-group-item list-group-item-action" data-code="${store.code}" data-name="${store.name}">${store.code} - ${store.name}</a>`;
+        });
+        autocompleteList.innerHTML = listHtml;
     });
-  });
 
-  document.addEventListener('click', (e) => {
-    if (!storeInput.contains(e.target)) {
-      autocompleteList.innerHTML = '';
-    }
-  });
+    autocompleteList.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (e.target.matches('.list-group-item')) {
+            const code = e.target.dataset.code;
+            const name = e.target.dataset.name;
+            storeInput.value = `${code} - ${name}`;
+            autocompleteList.innerHTML = '';
+        }
+    });
+}
+
+function setupMultiStoreSearchAutocomplete() {
+    const multiStoreSearchInput = document.getElementById('multiStoreSearch');
+    const multiAutocompleteList = document.getElementById('multi-autocomplete-list');
+    const downloadMultiExcelBtn = document.getElementById('downloadMultiExcel');
+
+    multiStoreSearchInput.addEventListener('input', () => {
+        const query = multiStoreSearchInput.value.toLowerCase();
+        if (query.length < 2) {
+            multiAutocompleteList.innerHTML = '';
+            return;
+        }
+
+        const filteredResults = multiStoreCheckResults.filter(result => 
+            result.storeName.toLowerCase().includes(query) || result.storeCode.toLowerCase().includes(query)
+        );
+
+        let listHtml = '';
+        filteredResults.slice(0, 5).forEach(result => {
+            listHtml += `<a href="#" class="list-group-item list-group-item-action" data-store-code="${result.storeCode}">${result.storeCode} - ${result.storeName} (${result.status})</a>`;
+        });
+        multiAutocompleteList.innerHTML = listHtml;
+    });
+
+    multiAutocompleteList.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (e.target.matches('.list-group-item')) {
+            const storeCode = e.target.dataset.storeCode;
+            const selectedResult = multiStoreCheckResults.find(result => result.storeCode === storeCode);
+            if (selectedResult) {
+                renderMultiStoreTable(selectedResult.products, 'multiCardList');
+                multiStoreSearchInput.value = `${selectedResult.storeCode} - ${selectedResult.storeName}`;
+            }
+            multiAutocompleteList.innerHTML = '';
+        }
+    });
 }
 
 // --- Data Loading ---
 async function loadInitialData() {
-  try {
-    const [branchRes, storeRes] = await Promise.all([
-      apiFetch('getBranchList'),
-      apiFetch('getStoreList')
-    ]);
-
-    // Populate branches
     const branchSelect = document.getElementById('branch');
-    branchSelect.innerHTML = '<option selected disabled value="">-- Pilih Branch --</option>';
-    if (branchRes.success) {
-      branchRes.data.forEach(branch => {
-        branchSelect.innerHTML += `<option value="${branch}">${branch}</option>`;
-      });
-    }
+    const multiBranchSelect = document.getElementById('multiBranch');
+    const storeInput = document.getElementById('store');
 
-    // Setup stores for autocomplete
-    if (storeRes.success) {
-      allStores = storeRes.data;
-      document.getElementById('store').disabled = false;
-      setupAutocomplete();
+    try {
+        const branchRes = await apiFetch('getBranchList');
+        if (branchRes.success) {
+            branchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
+            multiBranchSelect.innerHTML = '<option selected disabled value="">Pilih Cabang</option>';
+            branchRes.data.forEach(branch => {
+                branchSelect.innerHTML += `<option value="${branch}">${branch}</option>`;
+                multiBranchSelect.innerHTML += `<option value="${branch}">${branch}
+</option>`;
+            });
+            branchSelect.disabled = false;
+            multiBranchSelect.disabled = false;
+        } else {
+            branchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
+            multiBranchSelect.innerHTML = '<option selected disabled value="">Gagal memuat</option>';
+        }
+
+        const storeRes = await apiFetch('getStoreList');
+        if (storeRes.success) {
+            allStores = storeRes.data;
+            storeInput.disabled = false;
+            setupAutocomplete();
+        } else {
+            storeInput.placeholder = 'Gagal memuat toko';
+        }
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+        showAlert('Gagal memuat data awal. Coba refresh halaman.', 'danger');
     }
-  } catch (err) {
-    showAlert('Gagal memuat data awal. Coba refresh halaman.');
-    console.error(err);
-  }
 }
 
-// --- Main Execution Logic ---
+// --- Core Stock Fetching Logic (Reusable) ---
+async function fetchAndProcessStock(branch, storeCode, storeName) {
+    try {
+        const itemOrderRes = await apiFetch('getItemList');
+        if (!itemOrderRes.success) throw new Error(itemOrderRes.error.message);
+        
+        const apiResponseRes = await apiFetch('getStokProduk', { storecode: storeCode, branch: branch });
+        if (!apiResponseRes.success) throw new Error(apiResponseRes.error.message);
+        if (apiResponseRes.data.error) throw new Error(`API Alfagift Error: ${apiResponseRes.data.message}`);
+
+        const itemOrderList = itemOrderRes.data;
+        const productsFromApi = apiResponseRes.data.data.listCartDetail || [];
+        const apiProductsProcessed = productsFromApi.map(p => ({
+          originalProduct: p,
+          searchName: p.productName ? p.productName.trim().toLowerCase() : ''
+        }));
+
+        const finalProductList = itemOrderList.map(itemFromSheet => {
+          const searchNameFromSheet = itemFromSheet.name.trim().toLowerCase();
+          const foundApiProduct = apiProductsProcessed.find(p => p.searchName.includes(searchNameFromSheet));
+          
+          if (foundApiProduct) {
+            const foundItem = foundApiProduct.originalProduct;
+            return {
+              productCode: itemFromSheet.code,
+              productName: foundItem.productName,
+              stock: foundItem.productStock?.stock ?? 0,
+              tagProduct: foundItem.tagProduct || '-',
+              normalPrice: foundItem.normalPrice || foundItem.alfacartPrice || 0,
+              productImageThumbnail: foundItem.productImageThumbnail
+            };
+          } else {
+            return {
+              productCode: itemFromSheet.code,
+              productName: itemFromSheet.name,
+              stock: 0,
+              tagProduct: '-',
+              normalPrice: 0,
+              productImageThumbnail: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRoTNL2Jk0oNIKQaFM6wPSTlLwEUQzYqTV7Gw&s'
+            };
+          }
+        });
+        return { success: true, products: finalProductList };
+
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+// --- Main Execution Logic (Single Store) ---
 async function executeStokCheck(isForDownload = false) {
   const branch = document.getElementById('branch').value;
   const storeInput = document.getElementById('store').value;
-  
-  // Determine which button to use
   const actionBtn = document.getElementById(isForDownload ? 'downloadLaporan' : 'cekStok');
-  if (!actionBtn) return; // Safety check
-  
-  const spinner = actionBtn.querySelector('.spinner-border');
+  const spinner = actionBtn ? actionBtn.querySelector('.spinner-border') : null;
 
   if (!branch || !storeInput) {
-    if (!hasAutoRefreshed) alert('Pilih branch dan toko dulu!');
+    if (!isForDownload) alert('Pilih branch dan toko dulu!');
     return;
   }
 
-  actionBtn.disabled = true;
-  spinner.style.display = 'inline-block';
-  document.getElementById('result-card').style.display = 'block';
+  if(actionBtn) actionBtn.disabled = true;
+  if(spinner) spinner.style.display = 'inline-block';
   
   const storeName = storeInput.split(' - ')[1] || storeInput;
-  document.getElementById('judulStok').textContent = isForDownload ? 'Narik stok dulu...' : `Stok ${storeName}`;
+  const storeCode = storeInput.split(' - ')[0];
 
   if (!hasAutoRefreshed) {
-    showProgressBar('Bentar narik datanya dulu...');
-  } else {
-    showProgressBar('Sabar bang lagi nyoba narik datanya lagi...');
+    document.getElementById('judulStok').textContent = isForDownload ? 'Proses Download' : `Stok ${storeName}`;
   }
 
+  const isFirstRun = !hasAutoRefreshed;
+  const basePercentage = isFirstRun ? 0 : 50;
+
   try {
-    const storecode = storeInput.split(' - ')[0];
-    const itemOrderRes = await apiFetch('getItemList');
-    if (!itemOrderRes.success) throw new Error(itemOrderRes.error.message);
-    
-    const apiResponseRes = await apiFetch('getStokProduk', { storecode, branch });
-    if (!apiResponseRes.success) throw new Error(apiResponseRes.error.message);
-    if (apiResponseRes.data.error) throw new Error(`API Alfagift Error: ${apiResponseRes.data.message}`);
+    showGlobalProgressBar(basePercentage + 15, `Mengambil ${isFirstRun ? '' : 'ulang '}daftar produk...`);
+    const result = await fetchAndProcessStock(branch, storeCode, storeName);
 
-    const itemOrderList = itemOrderRes.data;
-    const productsFromApi = apiResponseRes.data.data.listCartDetail || [];
-    const apiProductsProcessed = productsFromApi.map(p => ({
-      originalProduct: p,
-      searchName: p.productName ? p.productName.trim().toLowerCase() : ''
-    }));
+    if (!result.success) {
+        throw new Error(result.error);
+    }
+    currentProductData = result.products;
 
-    const finalProductList = itemOrderList.map(itemFromSheet => {
-      const searchNameFromSheet = itemFromSheet.name.trim().toLowerCase();
-      const foundApiProduct = apiProductsProcessed.find(p => p.searchName.includes(searchNameFromSheet));
-      
-      if (foundApiProduct) {
-        const foundItem = foundApiProduct.originalProduct;
-        return {
-          productCode: itemFromSheet.code,
-          productName: foundItem.productName,
-          stock: foundItem.productStock?.stock ?? 0,
-          tagProduct: foundItem.tagProduct || '-',
-          normalPrice: foundItem.normalPrice || foundItem.alfacartPrice || 0,
-          productImageThumbnail: foundItem.productImageThumbnail
-        };
-      } else {
-        return {
-          productCode: itemFromSheet.code,
-          productName: itemFromSheet.name,
-          stock: 0,
-          tagProduct: '-',
-          normalPrice: 0,
-          productImageThumbnail: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRoTNL2Jk0oNIKQaFM6wPSTlLwEUQzYqTV7Gw&s'
-        };
-      }
-    });
-
-    if (!hasAutoRefreshed) {
+    if (isFirstRun) {
       hasAutoRefreshed = true;
+      showGlobalProgressBar(50, 'Validasi... Menjalankan pengecekan kedua.');
       setTimeout(() => executeStokCheck(isForDownload), 750);
     } else {
-      currentProductData = finalProductList;
-      actionBtn.disabled = false;
-      spinner.style.display = 'none';
+      console.log('DEBUG: Second run complete. Final product list:', currentProductData);
+
+      if(actionBtn) actionBtn.disabled = false;
+      if(spinner) spinner.style.display = 'none';
 
       if (isForDownload) {
+        showGlobalProgressBar(100, 'Selesai!');
         downloadAsCsv('stok.csv');
-        showAlert('Stok berhasil ditarik.', 'success');
+        setTimeout(() => {
+          showSuccessAnimation('Download CSV Berhasil!');
+        }, 100); // Small delay to ensure download starts
       } else {
-        renderTable(finalProductList);
-        // Collapse the "Pilih Toko" section on main page
-        const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
-        if (collapsePilihTokoElement) {
-          const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
-          bsCollapse.hide();
-        }
+        showSuccessAnimation('Pengecekan Stok Berhasil!');
+        setTimeout(() => {
+            renderTable(currentProductData);
+            const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
+            if (collapsePilihTokoElement) {
+                const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
+                bsCollapse.hide();
+            }
+        }, 1500); // Delay for animation
       }
     }
 
   } catch (err) {
     showAlert(`Terjadi error: ${err.message}`);
-    actionBtn.disabled = false;
-    spinner.style.display = 'none';
+    if(actionBtn) actionBtn.disabled = false;
+    if(spinner) spinner.style.display = 'none';
     console.error(err);
   }
 }
 
+// --- Main Execution Logic (Multi Store) ---
+async function executeMultiStokCheck() {
+    const branch = document.getElementById('multiBranch').value;
+    const multiStoreCodesInput = document.getElementById('multiStoreCodes').value;
+    const actionBtn = document.getElementById('cekStokMulti');
+    const spinner = actionBtn ? actionBtn.querySelector('.spinner-border') : null;
+    const multiCardList = document.getElementById('multiCardList');
+    const multiResultCard = document.getElementById('multi-result-card');
+
+    if (!branch || !multiStoreCodesInput) {
+        alert('Pilih cabang dan masukkan kode toko!');
+        return;
+    }
+
+    if(actionBtn) actionBtn.disabled = true;
+    if(spinner) spinner.style.display = 'inline-block';
+    multiResultCard.style.display = 'block';
+    multiCardList.innerHTML = ''; // Clear previous content
+
+    const rawStoreCodes = multiStoreCodesInput.split(',');
+    const storeCodes = rawStoreCodes.map(s => s.trim().toUpperCase()).filter(s => s);
+
+    if (storeCodes.length === 0) {
+        showAlert('Tidak ada kode toko yang valid ditemukan.', 'warning');
+        if(actionBtn) actionBtn.disabled = false;
+        if(spinner) spinner.style.display = 'none';
+        return;
+    }
+
+    multiStoreCheckResults = []; // Clear previous results
+
+    // Initialize progress bar for multi-store check
+    const totalStores = storeCodes.length;
+    let processedStores = 0;
+    showGlobalProgressBar(0, `Memulai pengecekan ${totalStores} toko...`);
+
+    for (let i = 0; i < totalStores; i++) {
+        const storeCode = storeCodes[i];
+        const storeInfo = allStores.find(s => s.code === storeCode);
+        const storeName = storeInfo ? storeInfo.name : storeCode; // Use code if name not found
+
+        const currentProgress = Math.floor(((i + 1) / totalStores) * 100);
+        showGlobalProgressBar(currentProgress, `Mengecek toko ${i + 1} dari ${totalStores}: ${storeCode} - ${storeName}...`);
+
+        const result = await fetchAndProcessStock(branch, storeCode, storeName);
+        multiStoreCheckResults.push({
+            storeCode: storeCode,
+            storeName: storeName,
+            branchCode: branch,
+            status: result.success ? 'Berhasil' : 'Gagal',
+            error: result.error || null,
+            products: result.products || []
+        });
+    }
+
+    if(actionBtn) actionBtn.disabled = false;
+    if(spinner) spinner.style.display = 'none';
+
+    // Final progress update and then clear progress bar
+    showGlobalProgressBar(100, 'Pengecekan multi toko selesai!');
+    setTimeout(() => {
+        hideGlobalProgressBar();
+        // Display summary of multi-store results
+        let summaryHtml = '<h6 class="mb-3">Ringkasan Hasil Pengecekan Multi Toko:</h6><ul class="list-group mb-3">';
+        multiStoreCheckResults.forEach(res => {
+            summaryHtml += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                ${res.storeCode} - ${res.storeName}
+                <span class="badge bg-${res.status === 'Berhasil' ? 'success' : 'danger'}">${res.status}</span>
+            </li>`;
+        });
+        summaryHtml += '</ul>';
+        multiCardList.innerHTML = summaryHtml;
+
+        // Setup autocomplete for multi-store results
+        setupMultiStoreSearchAutocomplete();
+
+        // Auto-collapse multi-store card
+        const collapseMultiElement = document.getElementById('collapseMultiToko');
+        if (collapseMultiElement) {
+            const bsCollapse = new bootstrap.Collapse(collapseMultiElement, { toggle: false });
+            bsCollapse.hide();
+        }
+
+    }, 1000); // Show 100% for 1 second then clear
+}
+
 // --- Download Logic ---
+function exportToExcel(products, branch, storeCode, storeName, fileName) {
+    if (products.length === 0) {
+        return alert('Tidak ada data produk untuk diunduh.');
+    }
+
+    const currentDate = new Date().toLocaleDateString('id-ID');
+
+    const allProductNames = new Set();
+    products.forEach(p => {
+        allProductNames.add(p.productName);
+    });
+
+    const sortedProductNames = Array.from(allProductNames).sort();
+
+    const excelData = [];
+    // Add header row
+    excelData.push(['Tanggal', 'Kode Cabang', 'Kode Toko', 'Nama Toko', ...sortedProductNames]);
+
+    // Add data row for the current store
+    const row = {
+        'Tanggal': currentDate,
+        'Kode Cabang': branch,
+        'Kode Toko': storeCode,
+        'Nama Toko': storeName
+    };
+    sortedProductNames.forEach(productName => {
+        const product = products.find(p => p.productName === productName);
+        row[productName] = product ? product.stock : 0;
+    });
+    excelData.push(Object.values(row));
+
+    const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Stok Transpose");
+    XLSX.writeFile(workbook, fileName || `stok_${storeName.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`);
+}
+
 function downloadAsXlsx(fileName) {
-  if (currentProductData.length === 0) return alert('Data kosong.');
-  const ws_data = [
-    ["Kode Produk", "Nama Produk", "Stok", "Tag", "Harga"],
-    ...currentProductData.map(item => [
-      item.productCode,
-      item.productName,
-      item.stock,
-      item.tagProduct,
-      item.normalPrice
-    ])
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(ws_data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stok");
-  
-  let finalFileName = fileName;
-  if (!finalFileName) {
-    const storeName = (document.getElementById('store').value.split(' - ')[1] || 'data').replace(/[^a-zA-Z0-9]/g, '_');
-    const today = new Date();
-    finalFileName = `stok_${storeName}_${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}.xlsx`;
-  }
-  XLSX.writeFile(wb, finalFileName);
+    // This function now just calls the generic exportToExcel
+    const branch = document.getElementById('branch').value;
+    const storeInput = document.getElementById('store').value;
+    const storeCode = storeInput.split(' - ')[0];
+    const storeName = storeInput.split(' - ')[1] || storeInput;
+    
+    exportToExcel(currentProductData, branch, storeCode, storeName, fileName);
 }
 
 function downloadAsCsv(fileName) {
+  console.log('DEBUG: downloadAsCsv called. Items to download:', currentProductData.length);
   if (currentProductData.length === 0) return alert('Data kosong.');
   let csvContent = "Kode Produk,Nama Produk,Stok\n";
   currentProductData.forEach(item => {
@@ -343,82 +541,151 @@ function downloadAsCsv(fileName) {
   document.body.removeChild(link);
 }
 
+function downloadMultiStoreExcel() {
+    if (multiStoreCheckResults.length === 0) {
+        alert('Tidak ada data pengecekan multi toko untuk diunduh. Lakukan pengecekan multi toko terlebih dahulu.');
+        return;
+    }
+
+    const allProductNames = new Set();
+    multiStoreCheckResults.forEach(result => {
+        result.products.forEach(p => {
+            allProductNames.add(p.productName);
+        });
+    });
+
+    const sortedProductNames = Array.from(allProductNames).sort();
+
+    const excelData = [];
+    // Add header row
+    excelData.push(['Tanggal', 'Kode Cabang', 'Kode Toko', 'Nama Toko', ...sortedProductNames]);
+
+    // Add data rows for all stores in multiStoreCheckResults
+    multiStoreCheckResults.forEach(result => {
+        const row = {
+            'Tanggal': result.date || new Date().toLocaleDateString('id-ID'), // Use stored date or current date
+            'Kode Cabang': result.branchCode,
+            'Kode Toko': result.storeCode,
+            'Nama Toko': result.storeName
+        };
+        sortedProductNames.forEach(productName => {
+            const product = result.products.find(p => p.productName === productName);
+            row[productName] = product ? product.stock : 0;
+        });
+        excelData.push(Object.values(row));
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Stok Gabungan Multi");
+    
+    const today = new Date();
+    const fileName = `stok_gabungan_multi_${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}${today.getFullYear()}.xlsx`;
+    
+    XLSX.writeFile(workbook, fileName);
+}
+
 // --- Event Listeners ---
 document.addEventListener('DOMContentLoaded', () => {
-  loadInitialData().then(() => {
+    loadInitialData();
+
+    document.getElementById('cekStok').addEventListener('click', () => executeStokCheck(false));
+    document.getElementById('downloadExcel').addEventListener('click', () => downloadAsXlsx());
+    document.getElementById('downloadCsv').addEventListener('click', () => downloadAsCsv());
+    document.getElementById('cekStokMulti').addEventListener('click', executeMultiStokCheck);
+    document.getElementById('downloadMultiExcel').addEventListener('click', downloadMultiStoreExcel);
+
+    const collapseElement = document.getElementById('collapsePilihToko');
+    const collapseIcon = document.getElementById('collapseIcon');
+
+    const collapseMultiElement = document.getElementById('collapseMultiToko');
+    const collapseMultiIcon = document.getElementById('collapseMultiIcon');
+
+    if (collapseElement && collapseIcon) {
+        collapseElement.addEventListener('show.bs.collapse', function () {
+            collapseIcon.classList.remove('bi-chevron-down');
+            collapseIcon.classList.add('bi-chevron-up');
+            // Collapse other card
+            if (collapseMultiElement) {
+                const bsCollapse = new bootstrap.Collapse(collapseMultiElement, { toggle: false });
+                bsCollapse.hide();
+            }
+        });
+
+        collapseElement.addEventListener('hide.bs.collapse', function () {
+            collapseIcon.classList.remove('bi-chevron-up');
+            collapseIcon.classList.add('bi-chevron-down');
+        });
+    }
+
+    if (collapseMultiElement && collapseMultiIcon) {
+        collapseMultiElement.addEventListener('show.bs.collapse', function () {
+            collapseMultiIcon.classList.remove('bi-chevron-down');
+            collapseMultiIcon.classList.add('bi-chevron-up');
+            // Collapse other card
+            if (collapseElement) {
+                const bsCollapse = new bootstrap.Collapse(collapseElement, { toggle: false });
+                bsCollapse.hide();
+            }
+        });
+
+        collapseMultiElement.addEventListener('hide.bs.collapse', function () {
+            collapseMultiIcon.classList.remove('bi-chevron-up');
+            collapseMultiIcon.classList.add('bi-chevron-down');
+        });
+    }
+
+  function startAutoDownload(branchCode, storeCode) {
+    setTimeout(() => {
+      const branchSelect = document.getElementById('branch');
+      const storeInput = document.getElementById('store');
+      if (!branchSelect || !storeInput) return;
+
+      const upperBranchCode = branchCode.toUpperCase();
+      branchSelect.value = upperBranchCode;
+
+      const upperStoreCode = storeCode.toUpperCase();
+      const store = allStores.find(s => s.code === upperStoreCode);
+      storeInput.value = store ? `${store.code} - ${store.name}` : upperStoreCode;
+      
+      if (branchSelect.value === upperBranchCode && storeInput.value.startsWith(upperStoreCode)) {
+          hasAutoRefreshed = false;
+          currentProductData = [];
+          executeStokCheck(true);
+      } else {
+          showAlert('Gagal memulai download dari URL. Pastikan kode branch dan toko benar.');
+      }
+    }, 500); // Delay to ensure data is loaded
+  }
+
     const urlParams = new URLSearchParams(window.location.search);
     const branchCode = urlParams.get('branch');
     const storeCode = urlParams.get('store');
 
-    if (branchCode && storeCode) {
-      // Defer execution to allow the DOM to update with new <option>s
-      setTimeout(() => {
-        const branchSelect = document.getElementById('branch');
-        const storeInput = document.getElementById('store');
-
-        branchSelect.value = branchCode;
-
-        const store = allStores.find(s => s.code === storeCode);
-        if (store) {
-          storeInput.value = `${store.code} - ${store.name}`;
-        } else {
-          storeInput.value = storeCode;
-        }
-        
-        // Verify that the branch was actually selected before proceeding
-        if (branchSelect.value === branchCode && storeInput.value) {
-            hasAutoRefreshed = false;
-            currentProductData = [];
-            executeStokCheck(true);
-        } else {
-            console.error('Failed to set branch or store. Check if codes are correct.');
-            showAlert('Gagal memulai download. Pastikan kode branch dan toko benar dan ada dalam daftar.');
-        }
-      }, 0); // Delay of 0 milliseconds
+    if (storeCode && !branchCode) {
+      showGlobalProgressBar(10, 'Mencari kode cabang untuk toko ' + storeCode.toUpperCase() + '...');
+      apiFetch('getBranchByStore', { storecode: storeCode })
+        .then(res => {
+          if (res.success && res.data.branch) {
+            startAutoDownload(res.data.branch, storeCode);
+          } else {
+            throw new Error((res.error && res.error.message) || 'Kode cabang tidak ditemukan.');
+          }
+        })
+        .catch(err => {
+          showAlert('Gagal otomatis: ' + err.message);
+          console.error(err);
+        });
+    } else if (branchCode && storeCode) {
+      startAutoDownload(branchCode, storeCode);
     }
-  });
-
-  // Listener for index.html
-  const cekStokBtn = document.getElementById('cekStok');
-  if (cekStokBtn) {
-    cekStokBtn.addEventListener('click', () => {
-      hasAutoRefreshed = false;
-      currentProductData = [];
-      executeStokCheck(false);
-    });
-    document.getElementById('downloadExcel').addEventListener('click', () => downloadAsXlsx());
-    document.getElementById('downloadCsv').addEventListener('click', () => downloadAsCsv());
-  }
-
-  // Listener for laporan.html
-  const downloadLaporanBtn = document.getElementById('downloadLaporan');
-  if (downloadLaporanBtn) {
-    downloadLaporanBtn.addEventListener('click', () => {
-      hasAutoRefreshed = false;
-      currentProductData = [];
-      executeStokCheck(true);
-    });
-  }
-
-  // --- Collapse Icon Toggle ---
-  const collapsePilihToko = document.getElementById('collapsePilihToko');
-  const collapseIcon = document.getElementById('collapseIcon');
-
-  if (collapsePilihToko && collapseIcon) {
-    collapsePilihToko.addEventListener('shown.bs.collapse', () => {
-      collapseIcon.classList.remove('bi-chevron-down');
-      collapseIcon.classList.add('bi-chevron-up');
-    });
-
-    collapsePilihToko.addEventListener('hidden.bs.collapse', () => {
-      collapseIcon.classList.remove('bi-chevron-up');
-      collapseIcon.classList.add('bi-chevron-down');
-    });
-  }
 });
 
 // --- Prevent Accidental Refresh ---
 window.addEventListener('beforeunload', function (e) {
-  e.preventDefault();
-  e.returnValue = '';
+    const actionBtn = document.getElementById('cekStok');
+    if (actionBtn && actionBtn.disabled) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
 });
