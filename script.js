@@ -1,4 +1,5 @@
-const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbyzDz-T1b_7TbXtDJQ7zcpSO7vfhgrAeGo8b0Pnd3TU2_2LEHjTH_V36o07ZNiNU1SF/exec';
+const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxzf6uSbORvdU5bLk62UqAN5V2NibVpiqYvNdztzRLbIi0r0AGi49a53HZd8YVK1KY9/exec';
+const FORCE_JSONP = false; // set true kalau mau langsung pakai JSONP tanpa coba fetch
 let allStores = [];
 let hasAutoRefreshed = false;
 let currentProductData = [];
@@ -10,7 +11,52 @@ function apiFetch(action, params = {}) {
   for (const key in params) {
     url.searchParams.append(key, params[key]);
   }
-  return fetch(url).then(res => res.json());
+
+  function doJsonp() {
+    return new Promise((resolve, reject) => {
+      const callbackName = 'jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+      url.searchParams.set('callback', callbackName);
+      const script = document.createElement('script');
+      let timeoutId;
+      window[callbackName] = (data) => {
+        clearTimeout(timeoutId);
+        try { delete window[callbackName]; } catch(_) { window[callbackName] = undefined; }
+        script.remove();
+        console.debug('[apiFetch] JSONP success for action', action);
+        resolve(data);
+      };
+      script.onerror = () => {
+        clearTimeout(timeoutId);
+        try { delete window[callbackName]; } catch(_) { window[callbackName] = undefined; }
+        script.remove();
+        reject(new Error('JSONP load error'));
+      };
+      timeoutId = setTimeout(() => {
+        try { delete window[callbackName]; } catch(_) { window[callbackName] = undefined; }
+        script.remove();
+        reject(new Error('JSONP timeout'));
+      }, 15000);
+      script.src = url.toString();
+      document.head.appendChild(script);
+      console.debug('[apiFetch] Using JSONP for action', action, '->', script.src);
+    });
+  }
+
+  if (FORCE_JSONP) return doJsonp();
+
+  return fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        return res.text().then(t => { throw new Error('Unexpected content-type: ' + ct + ' body: ' + t.slice(0,200)); });
+      }
+      return res.json();
+    })
+    .catch(err => {
+      console.warn('[apiFetch] Fetch gagal, fallback JSONP. Action:', action, 'Err:', err.message);
+      return doJsonp();
+    });
 }
 
 function showAlert(message, type = 'danger') {
