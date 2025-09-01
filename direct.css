@@ -150,54 +150,23 @@ body {
   text-align: center;
 }
 
-.checkmark {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: block;
-  stroke-width: 3;
-  stroke: #fff;
-  stroke-miterlimit: 10;
-  margin: 0 auto 20px auto;
-  box-shadow: inset 0px 0px 0px var(--success-color);
-  animation: fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s both;
+.success-animation .success-gif {
+  width: 140px;
+  height: 140px;
 }
 
-.checkmark__circle {
-  stroke-dasharray: 166;
-  stroke-dashoffset: 166;
-  stroke-width: 2;
-  stroke-miterlimit: 10;
-  stroke: var(--success-color);
-  fill: none;
-  animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-}
-
-.checkmark__check {
-  transform-origin: 50% 50%;
-  stroke-dasharray: 48;
-  stroke-dashoffset: 48;
-  animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-}
-
-@keyframes stroke {
-  100% {
-    stroke-dashoffset: 0;
+/* Responsive success gif */
+@media (max-width: 768px) {
+  .success-animation .success-gif {
+    width: 120px;
+    height: 120px;
   }
 }
 
-@keyframes scale {
-  0%, 100% {
-    transform: none;
-  }
-  50% {
-    transform: scale3d(1.1, 1.1, 1);
-  }
-}
-
-@keyframes fill {
-  100% {
-    box-shadow: inset 0px 0px 0px 40px var(--success-color);
+@media (max-width: 576px) {
+  .success-animation .success-gif {
+    width: 100px;
+    height: 100px;
   }
 }
 
@@ -244,5 +213,73 @@ footer {
   }
   .card-body .row > div:last-child {
     margin-bottom: 0;
+  }
+}
+
+/* --- Loading Container Responsive --- */
+#loadingContainer {
+  min-height: 200px;
+}
+
+#loadingContainer .loading-gif {
+  width: 120px;
+  height: 120px;
+}
+
+#loadingContainer .progress {
+  max-width: 400px;
+  width: 100%;
+  height: 25px;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  #loadingContainer {
+    padding: 2rem 1rem !important;
+    min-height: 150px;
+  }
+  
+  #loadingContainer .loading-gif {
+    width: 100px;
+    height: 100px;
+  }
+  
+  #loadingContainer .progress {
+    max-width: 280px;
+    height: 20px;
+  }
+  
+  #progressBarText {
+    font-size: 0.875rem;
+  }
+  
+  #progressMessage {
+    font-size: 0.875rem;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 576px) {
+  #loadingContainer {
+    padding: 1.5rem 0.5rem !important;
+    min-height: 120px;
+  }
+  
+  #loadingContainer .loading-gif {
+    width: 80px;
+    height: 80px;
+  }
+  
+  #loadingContainer .progress {
+    max-width: 250px;
+    height: 18px;
+  }
+  
+  #progressBarText {
+    font-size: 0.75rem;
+  }
+  
+  #progressMessage {
+    font-size: 0.75rem;
   }
 }
