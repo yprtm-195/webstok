@@ -56,15 +56,23 @@ function apiFetch(action, params = {}) {
     });
 }
 
-// --- Global Progress Bar Functions ---
-function showGlobalProgressBar(percentage, message) {
-    const overlay = document.getElementById('globalLoadingOverlay');
-    const progressBarInner = document.getElementById('globalProgressBarInner');
-    const progressMessage = document.getElementById('globalProgressMessage');
-    const progressBarText = progressBarInner ? progressBarInner.querySelector('.progress-bar-text') : null;
+// --- Loading Container Functions ---
+function showLoadingContainer(percentage, message) {
+    const resultCard = document.getElementById('result-card');
+    const loadingContainer = document.getElementById('loadingContainer');
+    const resultContent = document.getElementById('resultContent');
+    const progressBarInner = document.getElementById('progressBarInner');
+    const progressBarText = document.getElementById('progressBarText');
+    const progressMessage = document.getElementById('progressMessage');
+    
     const sanitizedPercentage = Math.max(0, Math.min(100, Math.round(percentage)));
 
-    if (overlay) overlay.style.display = 'flex';
+    // Show result card and loading container
+    if (resultCard) resultCard.style.display = 'block';
+    if (loadingContainer) loadingContainer.style.display = 'block';
+    if (resultContent) resultContent.style.display = 'none';
+    
+    // Update progress bar
     if (progressBarInner) {
         progressBarInner.style.width = `${sanitizedPercentage}%`;
         progressBarInner.setAttribute('aria-valuenow', sanitizedPercentage);
@@ -77,31 +85,47 @@ function showGlobalProgressBar(percentage, message) {
     }
 }
 
-function hideGlobalProgressBar() {
-    const overlay = document.getElementById('globalLoadingOverlay');
-    if (overlay) overlay.style.display = 'none';
+function hideLoadingContainer() {
+    const loadingContainer = document.getElementById('loadingContainer');
+    const resultContent = document.getElementById('resultContent');
+    
+    if (loadingContainer) loadingContainer.style.display = 'none';
+    if (resultContent) resultContent.style.display = 'block';
 }
 
 // --- UI Feedback Functions ---
 function showAlert(message, type = 'danger') {
-  hideGlobalProgressBar(); // Ensure progress bar is hidden on alert
+  hideLoadingContainer(); // Ensure loading is hidden on alert
   const cardList = document.getElementById('cardList');
-  cardList.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+  const resultContent = document.getElementById('resultContent');
+  
+  if (resultContent) {
+    resultContent.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    resultContent.style.display = 'block';
+  } else if (cardList) {
+    cardList.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+  }
   document.getElementById('result-card').style.display = 'block';
 }
 
 function showSuccessAnimation(message) {
-  hideGlobalProgressBar(); // Ensure progress bar is hidden on success
+  hideLoadingContainer(); // Ensure loading is hidden on success
+  const resultContent = document.getElementById('resultContent');
   const cardList = document.getElementById('cardList');
-  cardList.innerHTML = `
+  
+  const successHtml = `
     <div class="success-animation">
-      <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-        <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-        <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-      </svg>
+      <img src="sukses.gif" alt="Success!" class="success-gif mb-3" style="width: 140px; height: 140px;">
       <p class="fs-5 mt-3">${message}</p>
     </div>
   `;
+  
+  if (resultContent) {
+    resultContent.innerHTML = successHtml;
+    resultContent.style.display = 'block';
+  } else if (cardList) {
+    cardList.innerHTML = successHtml;
+  }
   document.getElementById('result-card').style.display = 'block';
 }
 
@@ -180,9 +204,9 @@ async function executeStokCheck(isForDownload = false) {
 
   try {
     if (isFirstRun) {
-      showGlobalProgressBar(10, `Mengambil daftar produk...`);
+      showLoadingContainer(10, `Mengambil daftar produk...`);
     } else {
-      showGlobalProgressBar(60, `Mengambil ulang daftar produk untuk validasi...`);
+      showLoadingContainer(60, `Mengambil ulang daftar produk untuk validasi...`);
     }
 
     const result = await fetchAndProcessStock(branch, storeCode, storeName);
@@ -194,10 +218,10 @@ async function executeStokCheck(isForDownload = false) {
 
     if (isFirstRun) {
       hasAutoRefreshed = true;
-      showGlobalProgressBar(50, 'Validasi... Menjalankan pengecekan kedua.');
+      showLoadingContainer(50, 'Validasi... Menjalankan pengecekan kedua.');
       setTimeout(() => executeStokCheck(isForDownload), 750);
     } else {
-      showGlobalProgressBar(100, 'Selesai!');
+      showLoadingContainer(100, 'Selesai!');
 
       if(actionBtn) actionBtn.disabled = false;
       if(spinner) spinner.style.display = 'none';
@@ -281,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (storeCode && !branchCode) {
-        showGlobalProgressBar(10, 'Mencari kode cabang untuk toko ' + storeCode.toUpperCase() + '...');
+        showLoadingContainer(10, 'Mencari kode cabang untuk toko ' + storeCode.toUpperCase() + '...');
         apiFetch('getBranchByStore', { storecode: storeCode })
             .then(res => {
                 if (res.success && res.data.branch) {
