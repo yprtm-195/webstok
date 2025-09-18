@@ -1,7 +1,5 @@
 const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxzf6uSbORvdU5bLk62UqAN5V2NibVpiqYvNdztzRLbIi0r0AGi49a53HZd8YVK1KY9/exec';
 const FORCE_JSONP = false; 
-let allStores = [];
-let hasAutoRefreshed = false;
 let currentProductData = [];
 let multiStoreCheckResults = []; // New global variable for multi-store results
 
@@ -116,7 +114,7 @@ function renderTable(data) {
         return;
     }
 
-    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th>Gambar</th><th>Nama Produk</th><th>Stok</th><th>Tag</th></tr></thead><tbody>';
+    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th></th><th>Nama Produk</th><th>Stok</th></tr></thead><tbody>';
 
     data.forEach(item => {
         tableHtml += `
@@ -124,7 +122,6 @@ function renderTable(data) {
                 <td><img src="${item.productImageThumbnail}" alt="${item.productName}" class="product-img-table"></td>
                 <td>${item.productName}</td>
                 <td><span class="badge bg-secondary">${item.stock}</span></td>
-                <td>${item.tagProduct}</td>
             </tr>
         `;
     });
@@ -142,7 +139,7 @@ function renderMultiStoreTable(data, targetElementId) {
         return;
     }
 
-    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th>Gambar</th><th>Nama Produk</th><th>Stok</th><th>Tag</th></tr></thead><tbody>';
+    let tableHtml = '<div class="table-responsive"><table class="table table-bordered table-hover"><thead><tr><th></th><th>Nama Produk</th><th>Stok</th></tr></thead><tbody>';
 
     data.forEach(item => {
         tableHtml += `
@@ -150,7 +147,6 @@ function renderMultiStoreTable(data, targetElementId) {
                 <td><img src="${item.productImageThumbnail}" alt="${item.productName}" class="product-img-table"></td>
                 <td>${item.productName}</td>
                 <td><span class="badge bg-secondary">${item.stock}</span></td>
-                <td>${item.tagProduct}</td>
             </tr>
         `;
     });
@@ -280,35 +276,49 @@ async function loadInitialData() {
 // --- Core Stock Fetching Logic (Reusable) ---
 async function fetchAndProcessStock(branch, storeCode, storeName) {
     try {
+        // This part stays the same: get the master list of items from GAS.
         const itemOrderRes = await apiFetch('getItemList');
         if (!itemOrderRes.success) throw new Error(itemOrderRes.error.message);
         
-        const apiResponseRes = await apiFetch('getStokProduk', { storecode: storeCode, branch: branch });
-        if (!apiResponseRes.success) throw new Error(apiResponseRes.error.message);
-        if (apiResponseRes.data.error) throw new Error(`API Alfagift Error: ${apiResponseRes.data.message}`);
+        // --- Start of Change ---
+        // 1. Call the new API directly. CORS is now fixed on the server.
+        const response = await fetch(`https://stok.myomv.cloud/api/cart?store_code=${storeCode}`);
+        if (!response.ok) {
+            throw new Error(`Gagal mengambil data dari API baru, status: ${response.status}`);
+        }
+        // 2. The data from the new API is a direct array of products.
+        const productsFromApi = await response.json();
+        // --- End of Change ---
 
-        const itemOrderList = itemOrderRes.data;
-        const productsFromApi = apiResponseRes.data.data.listCartDetail || [];
+        const itemOrderList = itemOrderRes.data; // Master list from the sheet.
+        
+        // Map the products from the new API to a format we can easily search.
         const apiProductsProcessed = productsFromApi.map(p => ({
-          originalProduct: p,
+          productCode: p.productCode,
+          productName: p.productName,
+          stock: p.stock,
+          productImage: p.productImage,
           searchName: p.productName ? p.productName.trim().toLowerCase() : ''
         }));
 
         const finalProductList = itemOrderList.map(itemFromSheet => {
           const searchNameFromSheet = itemFromSheet.name.trim().toLowerCase();
+          // Find the product from the API response that matches the name from the master list.
           const foundApiProduct = apiProductsProcessed.find(p => p.searchName.includes(searchNameFromSheet));
           
           if (foundApiProduct) {
-            const foundItem = foundApiProduct.originalProduct;
+            // If found, use the data from the new API.
             return {
-              productCode: itemFromSheet.code,
-              productName: foundItem.productName,
-              stock: foundItem.productStock?.stock ?? 0,
-              tagProduct: foundItem.tagProduct || '-',
-              normalPrice: foundItem.normalPrice || foundItem.alfacartPrice || 0,
-              productImageThumbnail: foundItem.productImageThumbnail
+              productCode: foundApiProduct.productCode,
+              productName: foundApiProduct.productName,
+              stock: foundApiProduct.stock ?? 0,
+              tagProduct: '-', // Not available in the new API
+              normalPrice: 0, // Not available in the new API
+              // The old app used 'productImageThumbnail', let's stick to that for consistency.
+              productImageThumbnail: foundApiProduct.productImage 
             };
           } else {
+            // If not found in the API response, assume 0 stock.
             return {
               productCode: itemFromSheet.code,
               productName: itemFromSheet.name,
@@ -344,19 +354,10 @@ async function executeStokCheck(isForDownload = false) {
   const storeName = storeInput.split(' - ')[1] || storeInput;
   const storeCode = storeInput.split(' - ')[0].trim().toUpperCase();
 
-  if (!hasAutoRefreshed) {
-    document.getElementById('judulStok').textContent = isForDownload ? 'Proses Download' : `Stok ${storeName}`;
-  }
-
-  const isFirstRun = !hasAutoRefreshed;
+  document.getElementById('judulStok').textContent = isForDownload ? 'Proses Download' : `Stok ${storeName}`;
 
   try {
-    // Use different progress points for first and second run
-    if (isFirstRun) {
-      showGlobalProgressBar(10, `Mengambil daftar produk...`);
-    } else {
-      showGlobalProgressBar(60, `Mengambil ulang daftar produk untuk validasi...`);
-    }
+    showGlobalProgressBar(25, `Mengambil daftar produk...`);
 
     const result = await fetchAndProcessStock(branch, storeCode, storeName);
 
@@ -365,37 +366,29 @@ async function executeStokCheck(isForDownload = false) {
     }
     currentProductData = result.products;
 
-    if (isFirstRun) {
-      hasAutoRefreshed = true;
-      showGlobalProgressBar(50, 'Validasi... Menjalankan pengecekan kedua.');
-      setTimeout(() => executeStokCheck(isForDownload), 750);
-    } else {
-      // This is the second run completion
-      showGlobalProgressBar(100, 'Selesai!'); // Always show 100% at the end
+    showGlobalProgressBar(100, 'Selesai!');
 
-      console.log('DEBUG: Second run complete. Final product list:', currentProductData);
+    console.log('DEBUG: Single run complete. Final product list:', currentProductData);
 
-      if(actionBtn) actionBtn.disabled = false;
-      if(spinner) spinner.style.display = 'none';
+    if(actionBtn) actionBtn.disabled = false;
+    if(spinner) spinner.style.display = 'none';
 
-      // Delay the final action to let the user see the 100%
-      setTimeout(() => {
-        if (isForDownload) {
-          downloadAsCsv('stok.csv');
-          showSuccessAnimation('Download CSV Berhasil!');
-        } else {
-          showSuccessAnimation('Pengecekan Stok Berhasil!');
-          setTimeout(() => {
-              renderTable(currentProductData);
-              const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
-              if (collapsePilihTokoElement) {
-                  const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
-                  bsCollapse.hide();
-              }
-          }, 1500); // Delay for animation
-        }
-      }, 500); // 500ms delay to show 100%
-    }
+    setTimeout(() => {
+      if (isForDownload) {
+        downloadAsCsv('stok.csv');
+        showSuccessAnimation('Download CSV Berhasil!');
+      } else {
+        showSuccessAnimation('Pengecekan Stok Berhasil!');
+        setTimeout(() => {
+            renderTable(currentProductData);
+            const collapsePilihTokoElement = document.getElementById('collapsePilihToko');
+            if (collapsePilihTokoElement) {
+                const bsCollapse = new bootstrap.Collapse(collapsePilihTokoElement, { toggle: false });
+                bsCollapse.hide();
+            }
+        }, 1500);
+      }
+    }, 500);
 
   } catch (err) {
     showAlert(`Terjadi error: ${err.message}`);
@@ -698,7 +691,6 @@ document.addEventListener('DOMContentLoaded', () => {
       storeInput.value = store ? `${store.code} - ${store.name}` : upperStoreCode;
       
       if (branchSelect.value === upperBranchCode && storeInput.value.startsWith(upperStoreCode)) {
-          hasAutoRefreshed = false;
           currentProductData = [];
           executeStokCheck(true);
       } else {
