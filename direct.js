@@ -1,6 +1,5 @@
 const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbxzf6uSbORvdU5bLk62UqAN5V2NibVpiqYvNdztzRLbIi0r0AGi49a53HZd8YVK1KY9/exec';
 const FORCE_JSONP = false; 
-let hasAutoRefreshed = false;
 let currentProductData = [];
 
 // --- Helper Functions ---
@@ -135,14 +134,19 @@ async function fetchAndProcessStock(branch, storeCode, storeName) {
         const itemOrderRes = await apiFetch('getItemList');
         if (!itemOrderRes.success) throw new Error(itemOrderRes.error.message);
         
-        const apiResponseRes = await apiFetch('getStokProduk', { storecode: storeCode, branch: branch });
-        if (!apiResponseRes.success) throw new Error(apiResponseRes.error.message);
-        if (apiResponseRes.data.error) throw new Error(`API Alfagift Error: ${apiResponseRes.data.message}`);
+        const response = await fetch(`https://stok.myomv.cloud/api/cart?store_code=${storeCode}`);
+        if (!response.ok) {
+            throw new Error(`Gagal mengambil data dari API baru, status: ${response.status}`);
+        }
+        const productsFromApi = await response.json();
 
         const itemOrderList = itemOrderRes.data;
-        const productsFromApi = apiResponseRes.data.data.listCartDetail || [];
+        
         const apiProductsProcessed = productsFromApi.map(p => ({
-          originalProduct: p,
+          productCode: p.productCode,
+          productName: p.productName,
+          stock: p.stock,
+          productImage: p.productImage,
           searchName: p.productName ? p.productName.trim().toLowerCase() : ''
         }));
 
@@ -151,14 +155,13 @@ async function fetchAndProcessStock(branch, storeCode, storeName) {
           const foundApiProduct = apiProductsProcessed.find(p => p.searchName.includes(searchNameFromSheet));
           
           if (foundApiProduct) {
-            const foundItem = foundApiProduct.originalProduct;
             return {
-              productCode: itemFromSheet.code,
-              productName: foundItem.productName,
-              stock: foundItem.productStock?.stock ?? 0,
-              tagProduct: foundItem.tagProduct || '-',
-              normalPrice: foundItem.normalPrice || foundItem.alfacartPrice || 0,
-              productImageThumbnail: foundItem.productImageThumbnail
+              productCode: foundApiProduct.productCode,
+              productName: foundApiProduct.productName,
+              stock: foundApiProduct.stock ?? 0,
+              tagProduct: '-',
+              normalPrice: 0,
+              productImageThumbnail: foundApiProduct.productImage 
             };
           } else {
             return {
@@ -196,18 +199,10 @@ async function executeStokCheck(isForDownload = false) {
   const storeName = storeInput.split(' - ')[1] || storeInput;
   const storeCode = storeInput.split(' - ')[0];
 
-  if (!hasAutoRefreshed) {
-    document.getElementById('judulStok').textContent = 'Proses Download';
-  }
-
-  const isFirstRun = !hasAutoRefreshed;
+  document.getElementById('judulStok').textContent = 'Proses Download';
 
   try {
-    if (isFirstRun) {
-      showLoadingContainer(10, `Mengambil daftar produk...`);
-    } else {
-      showLoadingContainer(60, `Mengambil ulang daftar produk untuk validasi...`);
-    }
+    showLoadingContainer(25, `Mengambil daftar produk...`);
 
     const result = await fetchAndProcessStock(branch, storeCode, storeName);
 
@@ -216,21 +211,15 @@ async function executeStokCheck(isForDownload = false) {
     }
     currentProductData = result.products;
 
-    if (isFirstRun) {
-      hasAutoRefreshed = true;
-      showLoadingContainer(50, 'Validasi... Menjalankan pengecekan kedua.');
-      setTimeout(() => executeStokCheck(isForDownload), 750);
-    } else {
-      showLoadingContainer(100, 'Selesai!');
+    showLoadingContainer(100, 'Selesai!');
 
-      if(actionBtn) actionBtn.disabled = false;
-      if(spinner) spinner.style.display = 'none';
+    if(actionBtn) actionBtn.disabled = false;
+    if(spinner) spinner.style.display = 'none';
 
-      setTimeout(() => {
-        downloadAsCsv('stok.csv');
-        showSuccessAnimation('Download CSV Berhasil!');
-      }, 500);
-    }
+    setTimeout(() => {
+      downloadAsCsv('stok.csv');
+      showSuccessAnimation('Download CSV Berhasil!');
+    }, 500);
 
   } catch (err) {
     showAlert(`Terjadi error: ${err.message}`);
