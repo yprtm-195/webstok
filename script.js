@@ -64,12 +64,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return { code: p.kodeproduk, name: apiProduct ? apiProduct.productName : p.namaproduk, stock: apiProduct ? apiProduct.stock : 0 };
             });
             
-            statusText.textContent = 'Sip, beres! Filenya lagi di-download...';
+            statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
             statusProgress.value = 100;
             
             // Generate and download the standard CSV
             const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = exportProductList.map(p => `"${p.code}","${p.name.replace(/"/g, '')}",${p.stock}`).join('\n');
+            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
             downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
         })
         .catch(error => {
@@ -239,15 +239,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
-            const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = currentProductList.map(p => `"${p.code}","${p.name.replace(/"/g, '')}",${p.stock}`).join('\n');
-            downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
+            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
+            const csvContent = header + rows;
+            downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
 
         exportExcelButton.addEventListener('click', () => {
             const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
-            const csvContent = headers.map(h => `"${h}"`).join(',') + '\n' + values.map(v => `"${v}"`).join(',');
+            const csvContent = headers.join(',') + '\n' + values.join(',');
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
     }
