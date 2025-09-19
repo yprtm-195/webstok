@@ -9,12 +9,14 @@
 </head>
 <body class="is-flex is-flex-direction-column is-justify-content-center is-align-items-center">
 
-    <div id="status-container" class="has-text-centered">
-        <figure class="image is-128x128 is-inline-block">
-            <img src="loading.gif" alt="Loading...">
-        </figure>
-        <p id="status-text" class="is-size-5 mt-4">Sabar ya, lagi mulai proses...</p>
-        <progress id="status-progress" class="progress is-primary mt-4" max="100"></progress>
+    <div id="status-container" class="card">
+        <div class="card-content has-text-centered">
+            <figure class="image is-128x128 is-inline-block">
+                <img src="loading.gif" alt="Loading...">
+            </figure>
+            <p id="status-text" class="is-size-5 mt-4">Sabar ya, lagi mulai proses...</p>
+            <progress id="status-progress" class="progress is-primary mt-4" max="100"></progress>
+        </div>
     </div>
 
     <script src="script.js"></script>
