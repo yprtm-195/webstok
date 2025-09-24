@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://stok.myomv.cloud/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
+            fetch(`https://stok-v2.myomv.cloud/v2/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
         ])
         .then(([productListText, apiData]) => {
             const masterProductList = productListText.split('\n').slice(1).map(line => {
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             Promise.all([
                 fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                fetch(`https://stok.myomv.cloud/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
+                fetch(`https://stok-v2.myomv.cloud/v2/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
             ])
             .then(([productListText, apiData]) => {
                 const masterProductList = productListText.split('\n').slice(1).map(line => {
