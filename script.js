@@ -50,26 +50,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://stok-v2.myomv.cloud/v2/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
+            fetch(`https://api.myomv.cloud/api/stok/${storeCode}`).then(res => res.ok ? res.json() : [])
         ])
         .then(([productListText, apiData]) => {
-            const masterProductList = productListText.split('\n').slice(1).map(line => {
+            if (apiData.error) { // Handle error from our new API
+                return Promise.reject(new Error(apiData.error));
+            }
+
+            const masterProductList = productListText.split('
+').slice(1).map(line => {
                 const [kodeproduk, ...rest] = line.trim().split(',');
                 return { kodeproduk, namaproduk: rest.join(',') };
             }).filter(p => p.kodeproduk);
 
-            const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+            const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
             const exportProductList = masterProductList.map(p => {
                 const apiProduct = apiDataMap.get(p.kodeproduk);
-                return { code: p.kodeproduk, name: apiProduct ? apiProduct.productName : p.namaproduk, stock: apiProduct ? apiProduct.stock : 0 };
+                return { code: p.kodeproduk, name: apiProduct ? apiProduct.namaproduk : p.namaproduk, stock: apiProduct ? apiProduct.stok : 0 };
             });
             
             statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
             statusProgress.value = 100;
             
             // Generate and download the standard CSV
-            const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
+            const header = 'kodeproduk,namaproduk,stok
+';
+            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('
+');
             downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
         })
         .catch(error => {
@@ -102,7 +109,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.text();
             })
             .then(text => {
-                allStores = text.split('\n').slice(1).map(line => {
+                allStores = text.split('
+').slice(1).map(line => {
                     const trimmedLine = line.trim();
                     if (!trimmedLine) return null;
                     const [code, ...nameParts] = trimmedLine.split(',');
@@ -181,22 +189,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
             Promise.all([
                 fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                fetch(`https://stok-v2.myomv.cloud/v2/api/cart?store_code=${storeCode}`).then(res => res.ok ? res.json() : [])
+                fetch(`https://api.myomv.cloud/api/stok/${storeCode}`).then(res => res.ok ? res.json() : [])
             ])
             .then(([productListText, apiData]) => {
-                const masterProductList = productListText.split('\n').slice(1).map(line => {
+                if (apiData.error) { // Handle error from our new API
+                    return Promise.reject(new Error(apiData.error));
+                }
+
+                const masterProductList = productListText.split('
+').slice(1).map(line => {
                     const [kodeproduk, ...rest] = line.trim().split(',');
                     return { kodeproduk, namaproduk: rest.join(',') };
                 }).filter(p => p.kodeproduk);
 
-                const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+                const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
                 currentProductList = masterProductList.map(p => {
                     const apiProduct = apiDataMap.get(p.kodeproduk);
                     return {
                         code: p.kodeproduk,
-                        name: apiProduct ? apiProduct.productName : p.namaproduk,
-                        image: apiProduct ? apiProduct.productImage : 'oos.png',
-                        stock: apiProduct ? apiProduct.stock : 0
+                        name: apiProduct ? apiProduct.namaproduk : p.namaproduk,
+                        image: 'oos.png', // Hardcode placeholder, as new API doesn't provide image
+                        stock: apiProduct ? apiProduct.stok : 0
                     };
                 });
 
@@ -239,7 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
-            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
+            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('
+');
             const csvContent = header + rows;
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
@@ -247,7 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
         exportExcelButton.addEventListener('click', () => {
             const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
-            const csvContent = headers.join(',') + '\n' + values.join(',');
+            const csvContent = headers.join(',') + '
+' + values.join(',');
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
     }
