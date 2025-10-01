@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+docment.addEventListener('DOMContentLoaded', () => {
 
     // --- Global Helper Functions ---
     const getFormattedDate = () => {
