@@ -50,22 +50,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://api.myomv.cloud/api/stok/${storeCode}`).then(res => res.ok ? res.json() : [])
+            fetch(`https://api.myomv.cloud/api/stok/${storeCode}`)
+            .then(res => {
+                if (!res.ok) return [];
+                return res.json().then(data => {
+                    if (data.error) {
+                        console.error("API Error:", data.error);
+                        return []; // Return empty array on API error
+                    }
+                    // Map new keys to old keys for compatibility
+                    return data.map(item => ({
+                        productCode: item.kodeproduk,
+                        productName: item.namaproduk,
+                        stock: item.stok,
+                        productImage: 'oos.png' // Hardcode placeholder
+                    }));
+                });
+            })
         ])
         .then(([productListText, apiData]) => {
-            if (apiData.error) { // Handle error from our new API
-                return Promise.reject(new Error(apiData.error));
-            }
-
             const masterProductList = productListText.split('\n').slice(1).map(line => {
                 const [kodeproduk, ...rest] = line.trim().split(',');
                 return { kodeproduk, namaproduk: rest.join(',') };
             }).filter(p => p.kodeproduk);
 
-            const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
+            const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
             const exportProductList = masterProductList.map(p => {
                 const apiProduct = apiDataMap.get(p.kodeproduk);
-                return { code: p.kodeproduk, name: apiProduct ? apiProduct.namaproduk : p.namaproduk, stock: apiProduct ? apiProduct.stok : 0 };
+                return { code: p.kodeproduk, name: apiProduct ? apiProduct.productName : p.namaproduk, stock: apiProduct ? apiProduct.stock : 0 };
             });
             
             statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
@@ -73,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Generate and download the standard CSV
             const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, "'")},${p.stock}`).join('\n');
+            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
             downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
         })
         .catch(error => {
@@ -183,28 +195,39 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
 
-            Promise.all([
-                fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                fetch(`https://api.myomv.cloud/api/stok/${storeCode}`).then(res => res.ok ? res.json() : [])
-            ])
-            .then(([productListText, apiData]) => {
-                if (apiData.error) { // Handle error from our new API
-                    return Promise.reject(new Error(apiData.error));
-                }
-
+                    Promise.all([
+                        fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
+                        fetch(`https://api.myomv.cloud/api/stok/${storeCode}`)
+                        .then(res => {
+                            if (!res.ok) return [];
+                            return res.json().then(data => {
+                                if (data.error) {
+                                    console.error("API Error:", data.error);
+                                    return []; // Return empty array on API error
+                                }
+                                // Map new keys to old keys for compatibility
+                                return data.map(item => ({
+                                    productCode: item.kodeproduk,
+                                    productName: item.namaproduk,
+                                    stock: item.stok,
+                                    productImage: 'oos.png' // Hardcode placeholder
+                                }));
+                            });
+                        })
+                    ])            .then(([productListText, apiData]) => {
                 const masterProductList = productListText.split('\n').slice(1).map(line => {
                     const [kodeproduk, ...rest] = line.trim().split(',');
                     return { kodeproduk, namaproduk: rest.join(',') };
                 }).filter(p => p.kodeproduk);
 
-                const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
+                const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
                 currentProductList = masterProductList.map(p => {
                     const apiProduct = apiDataMap.get(p.kodeproduk);
                     return {
                         code: p.kodeproduk,
-                        name: apiProduct ? apiProduct.namaproduk : p.namaproduk,
-                        image: 'oos.png', // Hardcode placeholder, as new API doesn't provide image
-                        stock: apiProduct ? apiProduct.stok : 0
+                        name: apiProduct ? apiProduct.productName : p.namaproduk,
+                        image: apiProduct ? apiProduct.productImage : 'oos.png',
+                        stock: apiProduct ? apiProduct.stock : 0
                     };
                 });
 
@@ -247,14 +270,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
-            const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, "'")},${p.stock}`).join('\n');
+            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
             const csvContent = header + rows;
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
 
         exportExcelButton.addEventListener('click', () => {
-            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, "'"))];
+            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
             const csvContent = headers.join(',') + '\n' + values.join(',');
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
