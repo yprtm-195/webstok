@@ -50,7 +50,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`)
+            fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            })
             .then(res => {
                 if (!res.ok) return [];
                 return res.json().then(data => {
@@ -197,24 +201,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     Promise.all([
                         fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                        fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`)
-                        .then(res => {
-                            if (!res.ok) return [];
-                            return res.json().then(data => {
-                                if (data.error) {
-                                    console.error("API Error:", data.error);
-                                    return []; // Return empty array on API error
-                                }
-                                // Map new keys to old keys for compatibility
-                                return data.map(item => ({
-                                    productCode: item.kodeproduk,
-                                    productName: item.namaproduk,
-                                    stock: item.stok,
-                                    productImage: 'oos.png' // Hardcode placeholder
-                                }));
-                            });
-                        })
-                    ])            .then(([productListText, apiData]) => {
+                                        fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
+                                            headers: {
+                                                'ngrok-skip-browser-warning': 'true'
+                                            }
+                                        })
+                                        .then(res => {
+                                            if (!res.ok) return [];
+                                            return res.json().then(data => {
+                                                if (data.error) {
+                                                    console.error("API Error:", data.error);
+                                                    return []; // Return empty array on API error
+                                                }
+                                                // Map new keys to old keys for compatibility
+                                                return data.map(item => ({
+                                                    productCode: item.kodeproduk,
+                                                    productName: item.namaproduk,
+                                                    stock: item.stok,
+                                                    productImage: 'oos.png' // Hardcode placeholder
+                                                }));
+                                            });
+                                        })                    ])            .then(([productListText, apiData]) => {
                 const masterProductList = productListText.split('\n').slice(1).map(line => {
                     const [kodeproduk, ...rest] = line.trim().split(',');
                     return { kodeproduk, namaproduk: rest.join(',') };
