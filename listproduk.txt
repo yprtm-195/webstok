@@ -61,6 +61,7 @@ KM-062,Kanzler Naget Ayam Krispi 450 g
 KM-052,Kanzler Sosis Sapi Coktail 250 g
 KM-054,Kanzler Stik Naget Ayam Krispi 450 g
 KM-066,Kanzler Naget Ayam Krispi Pedas 450 g
-,Cimory Minuman Yogurt Tanpa Gula Tambahan Blueberry 240 ml
-,Cimory Minuman Yogurt Tanpa Gula Tambahan Blueberry 240 ml
-,Cimory Minuman Yogurt Tanpa Gula Tambahan Stroberi 240 ml
+YD-157,Cimory Minuman Yogurt Tanpa Gula Tambahan Stroberi 240 ml
+YD-156,Cimory Minuman Yogurt Tanpa Gula Tambahan Blueberry 240 ml
+YD-155,Cimory Minuman Yogurt Tanpa Gula Tambahan Tropical Fruits 240 ml
+YD-158,Cimory Minuman Yogurt Mangga 240 ml
