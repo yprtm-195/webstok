@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return data.map(item => ({
                         productCode: item.kodeproduk,
                         productName: item.namaproduk,
-                        stock: item.stok,
+                        stock: item.stock,
                         productImage: 'oos.png' // Hardcode placeholder
                     }));
                 });
@@ -217,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                                 return data.map(item => ({
                                                     productCode: item.kodeproduk,
                                                     productName: item.namaproduk,
-                                                    stock: item.stok,
+                                                    stock: item.stock,
                                                     productImage: 'oos.png' // Hardcode placeholder
                                                 }));
                                             });
