@@ -1,10 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- Global State & Helpers ---
-    let allStockData = null;
-    let allStores = [];
-    let allProducts = [];
-
+    // --- Global Helper Functions ---
     const getFormattedDate = () => {
         const d = new Date();
         const day = String(d.getDate()).padStart(2, '0');
@@ -24,43 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     };
 
-    // --- Main Initialization ---
+    // --- CONTEXT-AWARE LOGIC ---
+    // Check if we are on the direct export page or the interactive page
     const statusContainer = document.getElementById('status-container');
+
     if (statusContainer) {
         // --- DIRECT EXPORT PAGE LOGIC (direct.html) ---
-        initializeData().then(runDirectExport).catch(handleFatalError);
+        runDirectExport();
     } else {
         // --- INTERACTIVE PAGE LOGIC (index.html) ---
-        initializeData().then(initializeInteractivePage).catch(handleFatalError);
-    }
-
-    // --- DATA INITIALIZATION ---
-    function initializeData() {
-        return Promise.all([
-            fetch('listtoko.txt').then(res => res.ok ? res.text() : Promise.reject('Gagal ambil listtoko.txt')),
-            fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject('Gagal ambil listproduk.txt')),
-            fetch('live_stock.json').then(res => res.ok ? res.json() : Promise.reject('Gagal ambil live_stock.json'))
-        ]).then(([tokoText, produkText, stockJSON]) => {
-            allStores = tokoText.split('\n').slice(1).map(line => {
-                const [code, ...nameParts] = line.trim().split(',');
-                return code && nameParts.length > 0 ? { code, name: nameParts.join(',') } : null;
-            }).filter(Boolean);
-
-            allProducts = produkText.split('\n').slice(1).map(line => {
-                const [kodeproduk, ...rest] = line.trim().split(',');
-                return kodeproduk ? { kodeproduk, namaproduk: rest.join(',') } : null;
-            }).filter(Boolean);
-
-            allStockData = stockJSON;
-        });
-    }
-
-    function handleFatalError(error) {
-        const container = statusContainer || document.getElementById('tableContainer');
-        if (container) {
-            container.innerHTML = `<div class="notification is-danger"><strong>Waduh, Gagal Total!</strong><p>Gagal memuat data dasar (toko/produk/stok). Coba refresh halaman.<br>Error: ${error}</p></div>`;
-        }
-        console.error("Fatal Error:", error);
+        initializeInteractivePage();
     }
 
     // --- DIRECT EXPORT FUNCTIONS ---
@@ -68,35 +37,65 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusText = document.getElementById('status-text');
         const statusProgress = document.getElementById('status-progress');
         const urlParams = new URLSearchParams(window.location.search);
-        const storeCode = urlParams.get('store')?.toUpperCase();
+        const storeCode = urlParams.get('store');
 
         if (!storeCode) {
-            statusText.textContent = 'Error: Parameter ?store=[kode_toko] tidak ada di URL.';
+            statusText.textContent = 'Error: Eh, parameter ?store=[kode_toko] nggak ada di URL.';
             statusProgress.remove();
             return;
         }
 
-        statusText.textContent = `Memproses data untuk toko ${storeCode}...`;
+        statusText.textContent = `Lagi narik data buat toko ${storeCode}...`;
+        statusProgress.removeAttribute('value'); // Indeterminate progress
 
-        const storeStock = allStockData[storeCode];
-        if (!storeStock) {
-            statusText.textContent = `Error: Tidak ada data stok untuk toko ${storeCode} di file live_stock.json.`;
+        Promise.all([
+            fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
+            fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            })
+            .then(res => {
+                if (!res.ok) return [];
+                return res.json().then(data => {
+                    if (data.error) {
+                        console.error("API Error:", data.error);
+                        return []; // Return empty array on API error
+                    }
+                    // Map new keys to old keys for compatibility
+                    return data.map(item => ({
+                        productCode: item.kodeproduk,
+                        productName: item.namaproduk,
+                        stock: item.stock,
+                        productImage: 'oos.png' // Hardcode placeholder
+                    }));
+                });
+            })
+        ])
+        .then(([productListText, apiData]) => {
+            const masterProductList = productListText.split('\n').slice(1).map(line => {
+                const [kodeproduk, ...rest] = line.trim().split(',');
+                return { kodeproduk, namaproduk: rest.join(',') };
+            }).filter(p => p.kodeproduk);
+
+            const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+            const exportProductList = masterProductList.map(p => {
+                const apiProduct = apiDataMap.get(p.kodeproduk);
+                return { code: p.kodeproduk, name: apiProduct ? apiProduct.productName : p.namaproduk, stock: apiProduct ? apiProduct.stock : 0 };
+            });
+            
+            statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
+            statusProgress.value = 100;
+            
+            // Generate and download the standard CSV
+            const header = 'kodeproduk,namaproduk,stok\n';
+            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
+            downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
+        })
+        .catch(error => {
+            statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>${error.message}`;
             statusProgress.remove();
-            return;
-        }
-
-        const stockMap = new Map(storeStock.map(item => [item.kodeproduk, item.stock]));
-        const exportProductList = allProducts.map(p => {
-            const stock = stockMap.get(p.kodeproduk) || 0;
-            return { code: p.kodeproduk, name: p.namaproduk, stock };
         });
-
-        statusText.textContent = 'Sip, beres! Stoknya udah diproses.';
-        statusProgress.value = 100;
-
-        const header = 'kodeproduk,namaproduk,stok\n';
-        const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '''''')},${p.stock}`).join('\n');
-        downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
     }
 
     // --- INTERACTIVE PAGE FUNCTIONS ---
@@ -110,11 +109,39 @@ document.addEventListener('DOMContentLoaded', () => {
         const exportCsvButton = document.getElementById('export-csv');
         const exportExcelButton = document.getElementById('export-excel');
 
+        let allStores = [];
         let selectedStoreInfo = { code: '', name: '' };
         let currentProductList = [];
 
-        storeCodeInput.disabled = false;
-        storeCodeInput.placeholder = "Ketik nama atau kode toko...";
+        storeCodeInput.disabled = true;
+        storeCodeInput.placeholder = "Bentar, lagi ngambil daftar toko...";
+
+        fetch('listtoko.txt')
+            .then(response => {
+                if (!response.ok) throw new Error(`Gagal ngambil listtoko.txt`);
+                return response.text();
+            })
+            .then(text => {
+                allStores = text.split('\n').slice(1).map(line => {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) return null;
+                    const [code, ...nameParts] = trimmedLine.split(',');
+                    const name = nameParts.join(',');
+                    if (!code || !name) return null;
+                    return { code, name };
+                }).filter(s => s);
+
+                if (allStores.length > 0) {
+                    storeCodeInput.disabled = false;
+                    storeCodeInput.placeholder = "Ketik nama atau kode toko...";
+                } else {
+                    storeCodeInput.placeholder = "Waduh, gagal proses daftar toko";
+                }
+            })
+            .catch(error => {
+                console.error("Gagal memuat daftar toko:", error);
+                storeCodeInput.placeholder = "Waduh, gagal ngambil daftar toko";
+            });
 
         storeCodeInput.addEventListener('click', () => storeCodeInput.select());
         storeCodeInput.addEventListener('input', () => {
@@ -124,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 autocompleteDropdown.classList.remove('is-active');
                 return;
             }
-            const filteredStores = allStores.filter(store =>
+            const filteredStores = allStores.filter(store => 
                 store.name.toLowerCase().includes(query) || store.code.toLowerCase().includes(query)
             ).slice(0, 100);
 
@@ -132,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 autocompleteDropdown.classList.remove('is-active');
                 return;
             }
-            autocompleteResults.innerHTML = filteredStores.map(store =>
+            autocompleteResults.innerHTML = filteredStores.map(store => 
                 `<a href="#" class="dropdown-item" data-code="${store.code}" data-name="${store.name}">
                     ${store.name} <small>(${store.code})</small>
                 </a>`
@@ -156,37 +183,65 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        fetchButton.addEventListener('click', displayStockData);
+        fetchButton.addEventListener('click', fetchStockData);
 
-        function displayStockData() {
-            const storeCode = selectedStoreInfo.code?.toUpperCase() || storeCodeInput.value.trim().toUpperCase();
+        function fetchStockData() {
+            const storeCode = selectedStoreInfo.code || storeCodeInput.value.trim();
             if (!storeCode) {
                 tableContainer.innerHTML = `<div class="notification is-warning is-light">Pilih dulu tokonya yang bener, bro.</div>`;
                 return;
             }
-            const foundStore = allStores.find(s => s.code.toUpperCase() === storeCode);
-            selectedStoreInfo = foundStore ? foundStore : { code: storeCode, name: storeCode };
-
-            tableContainer.innerHTML = '<div class="notification is-info is-light">Memproses data...</div>';
-            resultsHeader.classList.add('is-hidden');
-
-            const storeStock = allStockData[storeCode];
-            if (!storeStock) {
-                handleError({ message: `Tidak ada data stok untuk toko ${storeCode} di file live_stock.json.` });
-                return;
+            if (!selectedStoreInfo.name) {
+                const foundStore = allStores.find(s => s.code.toLowerCase() === storeCode.toLowerCase());
+                selectedStoreInfo = foundStore ? foundStore : { code: storeCode, name: storeCode };
             }
 
-            const stockMap = new Map(storeStock.map(item => [item.kodeproduk, item.stock]));
+            tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
+            resultsHeader.classList.add('is-hidden');
 
-            currentProductList = allProducts.map(p => ({
-                code: p.kodeproduk,
-                name: p.namaproduk,
-                image: 'oos.png', // Placeholder image
-                stock: stockMap.get(p.kodeproduk) || 0
-            }));
+                    Promise.all([
+                        fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
+                                        fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
+                                            headers: {
+                                                'ngrok-skip-browser-warning': 'true'
+                                            }
+                                        })
+                                        .then(res => {
+                                            if (!res.ok) return [];
+                                            return res.json().then(data => {
+                                                if (data.error) {
+                                                    console.error("API Error:", data.error);
+                                                    return []; // Return empty array on API error
+                                                }
+                                                // Map new keys to old keys for compatibility
+                                                return data.map(item => ({
+                                                    productCode: item.kodeproduk,
+                                                    productName: item.namaproduk,
+                                                    stock: item.stock,
+                                                    productImage: 'oos.png' // Hardcode placeholder
+                                                }));
+                                            });
+                                        })                    ])            .then(([productListText, apiData]) => {
+                const masterProductList = productListText.split('\n').slice(1).map(line => {
+                    const [kodeproduk, ...rest] = line.trim().split(',');
+                    return { kodeproduk, namaproduk: rest.join(',') };
+                }).filter(p => p.kodeproduk);
 
-            renderCards(currentProductList);
-            resultsHeader.classList.remove('is-hidden');
+                const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+                currentProductList = masterProductList.map(p => {
+                    const apiProduct = apiDataMap.get(p.kodeproduk);
+                    return {
+                        code: p.kodeproduk,
+                        name: apiProduct ? apiProduct.productName : p.namaproduk,
+                        image: apiProduct ? apiProduct.productImage : 'oos.png',
+                        stock: apiProduct ? apiProduct.stock : 0
+                    };
+                });
+
+                renderCards(currentProductList);
+                resultsHeader.classList.remove('is-hidden');
+            })
+            .catch(handleError);
         }
 
         function renderCards(products) {
@@ -222,16 +277,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
-            const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '''''')},${p.stock}`).join('\n');
-            downloadFile(`stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, header + rows);
+            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
+            const csvContent = header + rows;
+            downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
 
         exportExcelButton.addEventListener('click', () => {
-            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''''''))];
+            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
             const csvContent = headers.join(',') + '\n' + values.join(',');
-            downloadFile(`stok_excel_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
+            downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
         });
     }
 });
