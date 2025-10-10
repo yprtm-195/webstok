@@ -221,7 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                                     productImage: 'oos.png' // Hardcode placeholder
                                                 }));
                                             });
-                                        })                    ])            .then(([productListText, apiData]) => {
+                                        })
+                                    ])            .then(([productListText, apiData]) => {
                 const masterProductList = productListText.split('\n').slice(1).map(line => {
                     const [kodeproduk, ...rest] = line.trim().split(',');
                     return { kodeproduk, namaproduk: rest.join(',') };
