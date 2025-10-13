@@ -1,0 +1,35 @@
+name: Sync Live Stock Data
+
+on:
+  schedule:
+    # Menjalankan setiap 30 menit
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    # Tombol untuk menjalankan manual di tab Actions
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch live stock data from server
+        run: |
+          # Mengambil data dari API dan menyimpannya ke file live_stock.json
+          # Opsi --fail akan membuat langkah ini gagal jika API-mu error atau offline
+          curl --fail -o live_stock.json https://api.myomv.cloud/api/stok/v1/all
+
+      - name: Commit and push if there are changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add live_stock.json
+          
+          # Cek apakah ada perubahan sebelum commit
+          if ! git diff --staged --quiet; then
+            git commit -m "Update live stock data"
+            git push
+          else
+            echo "No changes to commit."
+          fi
