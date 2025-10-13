@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
     # Tombol untuk menjalankan manual di tab Actions
 
+# Memberikan izin tulis ke workflow
+permissions:
+  contents: write
+
 jobs:
   sync-data:
     runs-on: ubuntu-latest
