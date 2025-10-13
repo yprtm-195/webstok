@@ -50,11 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
-                headers: {
-                    'ngrok-skip-browser-warning': 'true'
-                }
-            })
+            fetch(`./live_stock.json`)
             .then(res => {
                 if (!res.ok) return [];
                 return res.json().then(data => {
@@ -201,11 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     Promise.all([
                         fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                                        fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
-                                            headers: {
-                                                'ngrok-skip-browser-warning': 'true'
-                                            }
-                                        })
+                                        fetch(`./live_stock.json`)
                                         .then(res => {
                                             if (!res.ok) return [];
                                             return res.json().then(data => {
