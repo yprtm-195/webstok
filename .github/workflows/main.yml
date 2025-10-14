@@ -1,11 +1,15 @@
 name: Sync Live Stock Data
 
+# Pemicu workflow diubah menjadi 'workflow_dispatch'
+# Ini memungkinkan workflow untuk dijalankan secara manual atau melalui API
 on:
-  schedule:
-    # Menjalankan setiap 30 menit
-    - cron: '*/30 * * * *'
   workflow_dispatch:
-    # Tombol untuk menjalankan manual di tab Actions
+    # Input ini opsional, tapi berguna untuk logging jika diperlukan
+    inputs:
+      trigger_source:
+        description: 'Sumber pemicu (misal: server_scraper)'
+        required: false
+        default: 'manual'
 
 # Memberikan izin tulis ke workflow
 permissions:
@@ -32,7 +36,7 @@ jobs:
           
           # Cek apakah ada perubahan sebelum commit
           if ! git diff --staged --quiet; then
-            git commit -m "Update live stock data"
+            git commit -m "Update live stock data (triggered by server)"
             git push
           else
             echo "No changes to commit."
