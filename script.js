@@ -1,5 +1,3 @@
-document.addEventListener('DOMContentLoaded', () => {
-
     // --- Global Helper Functions ---
     const getFormattedDate = () => {
         const d = new Date();
@@ -50,11 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Promise.all([
             fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
-                headers: {
-                    'ngrok-skip-browser-warning': 'true'
-                }
-            })
+            fetch(`./live_stock.json`)
             .then(res => {
                 if (!res.ok) return [];
                 return res.json().then(data => {
@@ -62,8 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.error("API Error:", data.error);
                         return []; // Return empty array on API error
                     }
+                    // Filter data for the specific store
+                    const storeData = data.filter(item => item.store_code === storeCode);
                     // Map new keys to old keys for compatibility
-                    return data.map(item => ({
+                    return storeData.map(item => ({
                         productCode: item.kodeproduk,
                         productName: item.namaproduk,
                         stock: item.stock,
@@ -110,38 +106,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const exportExcelButton = document.getElementById('export-excel');
 
         let allStores = [];
+        let allStockData = []; // To store the entire live_stock.json data
         let selectedStoreInfo = { code: '', name: '' };
         let currentProductList = [];
 
         storeCodeInput.disabled = true;
         storeCodeInput.placeholder = "Bentar, lagi ngambil daftar toko...";
 
-        fetch('listtoko.txt')
-            .then(response => {
-                if (!response.ok) throw new Error(`Gagal ngambil listtoko.txt`);
-                return response.text();
-            })
-            .then(text => {
-                allStores = text.split('\n').slice(1).map(line => {
-                    const trimmedLine = line.trim();
-                    if (!trimmedLine) return null;
-                    const [code, ...nameParts] = trimmedLine.split(',');
-                    const name = nameParts.join(',');
-                    if (!code || !name) return null;
-                    return { code, name };
-                }).filter(s => s);
+        // Fetch all necessary data at the beginning
+        Promise.all([
+            fetch('listtoko.txt').then(res => res.text()),
+            fetch('live_stock.json').then(res => res.json())
+        ]).then(([tokoText, stockData]) => {
+            // Process store list
+            allStores = tokoText.split('\n').slice(1).map(line => {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) return null;
+                const [code, ...nameParts] = trimmedLine.split(',');
+                const name = nameParts.join(',');
+                if (!code || !name) return null;
+                return { code, name };
+            }).filter(s => s);
 
-                if (allStores.length > 0) {
-                    storeCodeInput.disabled = false;
-                    storeCodeInput.placeholder = "Ketik nama atau kode toko...";
-                } else {
-                    storeCodeInput.placeholder = "Waduh, gagal proses daftar toko";
-                }
-            })
-            .catch(error => {
-                console.error("Gagal memuat daftar toko:", error);
-                storeCodeInput.placeholder = "Waduh, gagal ngambil daftar toko";
-            });
+            // Store stock data
+            allStockData = stockData;
+
+            if (allStores.length > 0) {
+                storeCodeInput.disabled = false;
+                storeCodeInput.placeholder = "Ketik nama atau kode toko...";
+            } else {
+                storeCodeInput.placeholder = "Waduh, gagal proses daftar toko";
+            }
+        }).catch(error => {
+            console.error("Gagal memuat data awal:", error);
+            storeCodeInput.placeholder = "Waduh, gagal ngambil data awal";
+            handleError(error);
+        });
 
         storeCodeInput.addEventListener('click', () => storeCodeInput.select());
         storeCodeInput.addEventListener('input', () => {
@@ -183,9 +183,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        fetchButton.addEventListener('click', fetchStockData);
+        fetchButton.addEventListener('click', processAndRenderStock);
 
-        function fetchStockData() {
+        function processAndRenderStock() {
             const storeCode = selectedStoreInfo.code || storeCodeInput.value.trim();
             if (!storeCode) {
                 tableContainer.innerHTML = `<div class="notification is-warning is-light">Pilih dulu tokonya yang bener, bro.</div>`;
@@ -199,42 +199,26 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
 
-                    Promise.all([
-                        fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-                                        fetch(`https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/${storeCode}`, {
-                                            headers: {
-                                                'ngrok-skip-browser-warning': 'true'
-                                            }
-                                        })
-                                        .then(res => {
-                                            if (!res.ok) return [];
-                                            return res.json().then(data => {
-                                                if (data.error) {
-                                                    console.error("API Error:", data.error);
-                                                    return []; // Return empty array on API error
-                                                }
-                                                // Map new keys to old keys for compatibility
-                                                return data.map(item => ({
-                                                    productCode: item.kodeproduk,
-                                                    productName: item.namaproduk,
-                                                    stock: item.stock,
-                                                    productImage: 'oos.png' // Hardcode placeholder
-                                                }));
-                                            });
-                                        })
-                                    ])            .then(([productListText, apiData]) => {
+            // Filter the pre-loaded stock data for the selected store
+            const apiData = allStockData.filter(item => item.store_code === storeCode);
+
+            fetch('listproduk.txt').then(res => {
+                if (!res.ok) throw new Error('Gagal ngambil listproduk.txt');
+                return res.text();
+            })
+            .then(productListText => {
                 const masterProductList = productListText.split('\n').slice(1).map(line => {
                     const [kodeproduk, ...rest] = line.trim().split(',');
                     return { kodeproduk, namaproduk: rest.join(',') };
                 }).filter(p => p.kodeproduk);
 
-                const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+                const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
                 currentProductList = masterProductList.map(p => {
                     const apiProduct = apiDataMap.get(p.kodeproduk);
                     return {
                         code: p.kodeproduk,
-                        name: apiProduct ? apiProduct.productName : p.namaproduk,
-                        image: apiProduct ? apiProduct.productImage : 'oos.png',
+                        name: apiProduct ? apiProduct.namaproduk : p.namaproduk,
+                        image: 'oos.png', // Placeholder image
                         stock: apiProduct ? apiProduct.stock : 0
                     };
                 });
@@ -278,16 +262,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
+            const header = 'kodeproduk,namaproduk,stok\n';
             const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
             const csvContent = header + rows;
-            downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
+            downloadFile(`stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
         });
 
         exportExcelButton.addEventListener('click', () => {
             const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
             const csvContent = headers.join(',') + '\n' + values.join(',');
-            downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
+            downloadFile(`stok_pivot_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
         });
     }
 });
