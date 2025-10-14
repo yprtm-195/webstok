@@ -19,7 +19,6 @@
     };
 
     // --- CONTEXT-AWARE LOGIC ---
-    // Check if we are on the direct export page or the interactive page
     const statusContainer = document.getElementById('status-container');
 
     if (statusContainer) {
@@ -39,7 +38,7 @@
 
         if (!storeCode) {
             statusText.textContent = 'Error: Eh, parameter ?store=[kode_toko] nggak ada di URL.';
-            statusProgress.remove();
+            if(statusProgress) statusProgress.remove();
             return;
         }
 
@@ -47,50 +46,44 @@
         statusProgress.removeAttribute('value'); // Indeterminate progress
 
         Promise.all([
-            fetch('listproduk.txt').then(res => res.ok ? res.text() : Promise.reject(new Error('Gagal ngambil listproduk.txt'))),
-            fetch(`./live_stock.json`)
-            .then(res => {
-                if (!res.ok) return [];
-                return res.json().then(data => {
-                    if (data.error) {
-                        console.error("API Error:", data.error);
-                        return []; // Return empty array on API error
-                    }
-                    // Filter data for the specific store
-                    const storeData = data.filter(item => item.store_code === storeCode);
-                    // Map new keys to old keys for compatibility
-                    return storeData.map(item => ({
-                        productCode: item.kodeproduk,
-                        productName: item.namaproduk,
-                        stock: item.stock,
-                        productImage: 'oos.png' // Hardcode placeholder
-                    }));
-                });
+            fetch('listproduk.txt').then(res => {
+                if (!res.ok) throw new Error('Gagal ngambil listproduk.txt');
+                return res.text();
+            }),
+            fetch('./live_stock.json').then(res => {
+                if (!res.ok) throw new Error('Gagal ngambil live_stock.json');
+                return res.json();
             })
         ])
-        .then(([productListText, apiData]) => {
+        .then(([productListText, allStockData]) => {
+            // Filter data for the specific store
+            const apiData = allStockData.filter(item => item.store_code === storeCode);
+
             const masterProductList = productListText.split('\n').slice(1).map(line => {
                 const [kodeproduk, ...rest] = line.trim().split(',');
                 return { kodeproduk, namaproduk: rest.join(',') };
             }).filter(p => p.kodeproduk);
 
-            const apiDataMap = new Map(apiData.map(item => [item.productCode, item]));
+            const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
             const exportProductList = masterProductList.map(p => {
                 const apiProduct = apiDataMap.get(p.kodeproduk);
-                return { code: p.kodeproduk, name: apiProduct ? apiProduct.productName : p.namaproduk, stock: apiProduct ? apiProduct.stock : 0 };
+                return { 
+                    code: p.kodeproduk, 
+                    name: apiProduct ? apiProduct.namaproduk : p.namaproduk, 
+                    stock: apiProduct ? apiProduct.stock : 0 
+                };
             });
             
             statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
             statusProgress.value = 100;
             
-            // Generate and download the standard CSV
             const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = exportProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
-            downloadFile(`stok_${getFormattedDate()}.csv`, header + rows);
+            const rows = exportProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
+            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
         })
         .catch(error => {
             statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>${error.message}`;
-            statusProgress.remove();
+            if(statusProgress) statusProgress.remove();
         });
     }
 
@@ -106,19 +99,17 @@
         const exportExcelButton = document.getElementById('export-excel');
 
         let allStores = [];
-        let allStockData = []; // To store the entire live_stock.json data
+        let allStockData = [];
         let selectedStoreInfo = { code: '', name: '' };
         let currentProductList = [];
 
         storeCodeInput.disabled = true;
-        storeCodeInput.placeholder = "Bentar, lagi ngambil daftar toko...";
+        storeCodeInput.placeholder = "Bentar, lagi ngambil data awal...";
 
-        // Fetch all necessary data at the beginning
         Promise.all([
             fetch('listtoko.txt').then(res => res.text()),
             fetch('live_stock.json').then(res => res.json())
         ]).then(([tokoText, stockData]) => {
-            // Process store list
             allStores = tokoText.split('\n').slice(1).map(line => {
                 const trimmedLine = line.trim();
                 if (!trimmedLine) return null;
@@ -128,7 +119,6 @@
                 return { code, name };
             }).filter(s => s);
 
-            // Store stock data
             allStockData = stockData;
 
             if (allStores.length > 0) {
@@ -180,6 +170,7 @@
                 selectedStoreInfo = { code: target.dataset.code, name: target.dataset.name };
                 storeCodeInput.value = target.dataset.name;
                 autocompleteDropdown.classList.remove('is-active');
+                fetchButton.click(); // Automatically fetch data on selection
             }
         });
 
@@ -193,13 +184,12 @@
             }
             if (!selectedStoreInfo.name) {
                 const foundStore = allStores.find(s => s.code.toLowerCase() === storeCode.toLowerCase());
-                selectedStoreInfo = foundStore ? foundStore : { code: storeCode, name: storeCode };
+                selectedStoreInfo = foundStore ? { ...foundStore } : { code: storeCode, name: storeCode };
             }
 
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
 
-            // Filter the pre-loaded stock data for the selected store
             const apiData = allStockData.filter(item => item.store_code === storeCode);
 
             fetch('listproduk.txt').then(res => {
@@ -218,7 +208,7 @@
                     return {
                         code: p.kodeproduk,
                         name: apiProduct ? apiProduct.namaproduk : p.namaproduk,
-                        image: 'oos.png', // Placeholder image
+                        image: 'oos.png',
                         stock: apiProduct ? apiProduct.stock : 0
                     };
                 });
@@ -263,13 +253,12 @@
 
         exportCsvButton.addEventListener('click', () => {
             const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
-            const csvContent = header + rows;
-            downloadFile(`stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
+            const rows = currentProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
+            downloadFile(`stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, header + rows);
         });
 
         exportExcelButton.addEventListener('click', () => {
-            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
+            const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, '""'))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
             const csvContent = headers.join(',') + '\n' + values.join(',');
             downloadFile(`stok_pivot_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
