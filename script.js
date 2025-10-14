@@ -270,6 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         exportCsvButton.addEventListener('click', () => {
+            const header = 'kodeproduk,namaproduk,stok\n';
             const rows = currentProductList.map(p => `${p.code},${p.name.replace(/"/g, '')},${p.stock}`).join('\n');
             const csvContent = header + rows;
             downloadFile(`stok_${getFormattedDate()}.csv`, csvContent);
