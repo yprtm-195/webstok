@@ -1,6 +1,9 @@
 name: Update Live Stock Data
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch: # Allows manual triggering
   schedule:
     - cron: '0 0 * * *' # Runs at 00:00 UTC, which is 7:00 AM WIB
@@ -8,6 +11,8 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
