@@ -82,35 +82,53 @@ const main = async () => {
     }
     console.log(`Found ${storeCodes.length} stores and ${masterProductList.length} master products.`);
 
-    // 2. Fetch stock for all stores
+    // 2. Fetch stock for all stores in parallel batches
+    const BATCH_SIZE = 20; // Number of concurrent requests
     const allStockData = {};
     let storesProcessed = 0;
 
-    for (const storeCode of storeCodes) {
-        console.log(`[${storesProcessed + 1}/${storeCodes.length}] Fetching stock for store: ${storeCode}`);
-        const apiUrl = `${API_BASE_URL}${storeCode}`;
-        let apiData = await fetchWithRetry(apiUrl);
+    console.log(`Starting fetch with a batch size of ${BATCH_SIZE}...`);
 
-        // Defensive check for API response format
-        if (!Array.isArray(apiData)) {
-            console.warn(`  -> Warning: API response for store ${storeCode} was not an array. Treating as empty.`);
-            apiData = []; // Ensure apiData is always an array to prevent crashes
-        }
+    for (let i = 0; i < storeCodes.length; i += BATCH_SIZE) {
+        const batch = storeCodes.slice(i, i + BATCH_SIZE);
+        console.log(`--> Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} stores (${i + batch.length}/${storeCodes.length})`);
 
-        const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
+        const batchPromises = batch.map(async (storeCode) => {
+            try {
+                const apiUrl = `${API_BASE_URL}${storeCode}`;
+                let apiData = await fetchWithRetry(apiUrl);
 
-        // 3. Merge API data with master product list
-        const finalProductList = masterProductList.map(masterProduct => {
-            const apiProduct = apiDataMap.get(masterProduct.kodeproduk);
-            return {
-                kodeproduk: masterProduct.kodeproduk,
-                namaproduk: apiProduct ? apiProduct.namaproduk : masterProduct.namaproduk,
-                stock: apiProduct ? apiProduct.stock : 0
-            };
+                if (!Array.isArray(apiData)) {
+                    console.warn(`  -> [${storeCode}] Warning: API response was not an array. Treating as empty.`);
+                    apiData = [];
+                }
+
+                const apiDataMap = new Map(apiData.map(item => [item.kodeproduk, item]));
+
+                const finalProductList = masterProductList.map(masterProduct => {
+                    const apiProduct = apiDataMap.get(masterProduct.kodeproduk);
+                    return {
+                        kodeproduk: masterProduct.kodeproduk,
+                        namaproduk: apiProduct ? apiProduct.namaproduk : masterProduct.namaproduk,
+                        stock: apiProduct ? apiProduct.stock : 0
+                    };
+                });
+
+                return { storeCode, finalProductList };
+            } catch (error) {
+                console.error(`  -> [${storeCode}] Error processing store:`, error);
+                return null; // Return null on error to avoid breaking Promise.all
+            }
         });
-        
-        allStockData[storeCode] = finalProductList;
-        storesProcessed++;
+
+        const batchResults = await Promise.all(batchPromises);
+
+        for (const result of batchResults) {
+            if (result) {
+                allStockData[result.storeCode] = result.finalProductList;
+                storesProcessed++;
+            }
+        }
     }
 
     // 4. Write the aggregated data to the output file
