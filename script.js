@@ -124,10 +124,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         statusText.textContent = `Lagi narik data buat toko ${storeCode}...`;
 
-        // ALWAYS FETCH FROM LIVE API
-        console.log(`Fetching live data for ${storeCode}...`);
-        let dataPromise = fetchFromLiveAPI(storeCode);
+        const cachedData = ALL_STOCK_DATA ? ALL_STOCK_DATA[storeCode] : null;
 
+        let dataPromise;
+        if (cachedData) {
+            console.log(`Data for ${storeCode} found in live_stock.json. Generating CSV.`);
+            // Data from cache is already in the desired format {kodeproduk, namaproduk, stock}
+            const formattedData = cachedData.map(item => ({
+                code: item.kodeproduk,
+                name: item.namaproduk,
+                stock: item.stock
+            }));
+            dataPromise = Promise.resolve(formattedData);
+        } else {
+            console.warn(`Data for ${storeCode} not in live_stock.json. Falling back to live API for direct export.`);
+            dataPromise = fetchFromLiveAPI(storeCode);
+        }
 
         dataPromise.then(finalProductList => {
             statusText.textContent = 'Sip, beres! Stoknya udah ditarik';
@@ -251,9 +263,21 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
 
-            // ALWAYS FETCH FROM LIVE API
-            console.log(`Fetching live data for ${storeCode}...`);
-            let dataPromise = fetchFromLiveAPI(storeCode);
+            const cachedData = ALL_STOCK_DATA ? ALL_STOCK_DATA[storeCode] : null;
+
+            let dataPromise;
+            if (cachedData) {
+                 console.log(`Rendering data for ${storeCode} from live_stock.json.`);
+                 const formattedData = cachedData.map(item => ({
+                    code: item.kodeproduk,
+                    name: item.namaproduk,
+                    stock: item.stock,
+                    image: 'oos.png' // hardcoded placeholder
+                }));
+                 dataPromise = Promise.resolve(formattedData);
+            } else {
+                dataPromise = fetchFromLiveAPI(storeCode);
+            }
             
             dataPromise.then(products => {
                 currentProductList = products;
