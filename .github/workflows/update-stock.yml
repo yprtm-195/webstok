@@ -27,6 +27,7 @@ jobs:
         run: npm install
 
       - name: Run fetch-stock script
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: node fetch-stock.js
 
       - name: Deploy to GitHub Pages
