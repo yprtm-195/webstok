@@ -83,7 +83,7 @@ const main = async () => {
     console.log(`Found ${storeCodes.length} stores and ${masterProductList.length} master products.`);
 
     // 2. Fetch stock for all stores in parallel batches
-    const BATCH_SIZE = 20; // Number of concurrent requests
+    const BATCH_SIZE = 10; // Number of concurrent requests
     const allStockData = {};
     let storesProcessed = 0;
 
@@ -129,6 +129,7 @@ const main = async () => {
                 storesProcessed++;
             }
         }
+        await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     // 4. Write the aggregated data to the output file
