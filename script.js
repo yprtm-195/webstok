@@ -7,20 +7,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- NEW: Function to fetch primary data files ---
     const fetchPrimaryData = async () => {
         try {
-            // Fetch both files in parallel for efficiency
-            const [stockResponse, productResponse] = await Promise.all([
+            // Fetch all primary data files in parallel
+            const [stockResponse, productResponse, statusResponse] = await Promise.all([
                 fetch('live_stock.json'),
-                fetch('listproduk.txt')
+                fetch('listproduk.txt'),
+                fetch('update_status.json') // Fetch update status
             ]);
 
+            // Process live_stock.json
             if (stockResponse.ok) {
                 ALL_STOCK_DATA = await stockResponse.json();
                 console.log('Successfully loaded live_stock.json');
             } else {
                 console.warn('Could not load live_stock.json. The app will run in full live API mode.');
-                ALL_STOCK_DATA = {}; // Initialize as empty object to prevent errors
+                ALL_STOCK_DATA = {};
             }
 
+            // Process listproduk.txt
             if (productResponse.ok) {
                 const productListText = await productResponse.text();
                 MASTER_PRODUCT_LIST = productListText.split('\n').slice(1).map(line => {
@@ -32,9 +35,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("CRITICAL: Failed to load listproduk.txt. The app may not function correctly.");
             }
 
+            // Process update_status.json and display it
+            if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                const lastUpdated = new Date(statusData.lastUpdated);
+                const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+                document.getElementById('update-status').textContent = `Terakhir Update: ${lastUpdated.toLocaleDateString('id-ID', options)}`;
+            } else {
+                 document.getElementById('update-status').textContent = 'Status update tidak tersedia.';
+            }
+
         } catch (error) {
             console.error('An error occurred during primary data fetch:', error);
             if (!ALL_STOCK_DATA) ALL_STOCK_DATA = {};
+            document.getElementById('update-status').textContent = 'Gagal memuat status update.';
         }
     };
 

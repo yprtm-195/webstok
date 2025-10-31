@@ -55,7 +55,7 @@ const fetchWithRetry = async (url) => {
         }
     }
     console.error(`All ${MAX_RETRIES} retries failed for ${url}.`);
-    return []; // Return empty array after all retries fail
+    throw new Error(`Failed to fetch ${url} after ${MAX_RETRIES} attempts`);
 };
 
 
@@ -117,7 +117,7 @@ const main = async () => {
 
                 return { storeCode, finalProductList };
             } catch (error) {
-                console.error(`  -> [${storeCode}] Error processing store:`, error);
+                console.error(`  -> [${storeCode}] Error processing store:`, error.message);
                 return null; // Return null on error to avoid breaking Promise.all
             }
         });
@@ -137,6 +137,12 @@ const main = async () => {
     try {
         await fs.writeFile(OUTPUT_FILE, JSON.stringify(allStockData, null, 2));
         console.log(`\nSuccessfully generated live_stock.json with data for ${storesProcessed} stores.`);
+
+        // 5. Write update status file
+        const updateStatus = { lastUpdated: new Date().toISOString() };
+        await fs.writeFile(path.join(__dirname, 'update_status.json'), JSON.stringify(updateStatus));
+        console.log('Successfully generated update_status.json.');
+
     } catch (error) {
         console.error('Error writing final JSON file:', error);
     }
