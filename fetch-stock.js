@@ -93,7 +93,8 @@ const main = async () => {
         const batch = storeCodes.slice(i, i + BATCH_SIZE);
         console.log(`--> Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} stores (${i + batch.length}/${storeCodes.length})`);
 
-        const batchPromises = batch.map(async (storeCode) => {
+        const batchPromises = batch.map(async (storeCode, index) => {
+            await new Promise(resolve => setTimeout(resolve, index * 1000));
             try {
                 const apiUrl = `${API_BASE_URL}${storeCode}`;
                 let apiData = await fetchWithRetry(apiUrl);
