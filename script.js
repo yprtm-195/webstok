@@ -36,19 +36,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Process update_status.json and display it
-            if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-                const lastUpdated = new Date(statusData.lastUpdated);
-                const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-                document.getElementById('update-status').textContent = `Terakhir Update: ${lastUpdated.toLocaleDateString('id-ID', options)}`;
-            } else {
-                 document.getElementById('update-status').textContent = 'Status update tidak tersedia.';
+            const updateStatusElement = document.getElementById('update-status');
+            if (updateStatusElement) {
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    const lastUpdated = new Date(statusData.lastUpdated);
+                    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+                    updateStatusElement.textContent = `Terakhir Update: ${lastUpdated.toLocaleDateString('id-ID', options)}`;
+                } else {
+                    updateStatusElement.textContent = 'Status update tidak tersedia.';
+                }
             }
 
         } catch (error) {
             console.error('An error occurred during primary data fetch:', error);
             if (!ALL_STOCK_DATA) ALL_STOCK_DATA = {};
-            document.getElementById('update-status').textContent = 'Gagal memuat status update.';
+            const updateStatusElement = document.getElementById('update-status');
+            if (updateStatusElement) {
+                updateStatusElement.textContent = 'Gagal memuat status update.';
+            }
         }
     };
 
