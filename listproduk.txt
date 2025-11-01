@@ -14,11 +14,10 @@ YD-097,Cimory Minuman Yogurt Mix Fruits 240 ml
 YD-096,Cimory Minuman Yogurt Leci 240 ml
 YD-100,Cimory Minuman Yogurt Mixed Berry 240 ml
 YD-099,Cimory Minuman Yogurt Original 240 ml
-YD-104,Cimory Minuman Yogurt Low Fat Stroberi & Mangga 240 ml
+YD-158,Cimory Minuman Yogurt Low Fat Stroberi & Mangga 240 ml
 YD-155,Cimory Minuman Yogurt Tanpa Gula Tambahan Tropical Fruits 240 ml
 YD-156,Cimory Minuman Yogurt Tanpa Gula Tambahan Blueberry 240 ml
 YD-157,Cimory Minuman Yogurt Tanpa Gula Tambahan Stroberi 240 ml
-YD-158,Cimory Minuman Yogurt Mangga 240 ml
 YD-065,Cimory Yogurt Squeeze Original 120 g
 YD-066,Cimory Yogurt Squeeze Stroberi 120 g
 YD-067,Cimory Yogurt Squeeze Bluberi 120 g
