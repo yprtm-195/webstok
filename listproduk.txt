@@ -52,6 +52,8 @@ YD-126,Cimory Yogurt Stik Rasa Bluberi 40 g
 YD-127,Cimory Yogurt Stik Rasa Original 40 g
 YD-136,Cimory Yogurt Stik Rasa Ketan Mangga 40 g
 YD-138,Cimory Yogurt Stik Rasa Brown Sugar 40 g
+YD-159,Cimory Yogurt Stik Rasa Jeruk 40 g	
+YD-160,Cimory Yogurt Stik Rasa Anggur Kyoho 40 g
 YD-139,Cimory Yogurt Bites Yuzu 120 g
 YD-141,Cimory Yogurt Bites Berry Blend 120 g
 YD-142,Cimory Yogurt Bites Stroberi Leci 120 g
