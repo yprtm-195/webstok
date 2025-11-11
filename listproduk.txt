@@ -62,3 +62,5 @@ YD-155,Cimory Minuman Yogurt Tanpa Gula Tambahan Tropical Fruits 240 ml
 YD-156,Cimory Minuman Yogurt Tanpa Gula Tambahan Blueberry 240 ml
 YD-157,Cimory Minuman Yogurt Tanpa Gula Tambahan Stroberi 240 ml
 YD-158,Cimory Minuman Yogurt Low Fat Stroberi & Mangga 240 ml
+YD-159,Cimory Yogurt Stik Rasa Jeruk 40 g
+YD-160,Cimory Yogurt Stik Rasa Anggur Kyoho 40 g
