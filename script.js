@@ -40,9 +40,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (updateStatusElement) {
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
-                    const lastUpdated = new Date(statusData.lastUpdated);
-                    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-                    updateStatusElement.textContent = `Terakhir Update: ${lastUpdated.toLocaleDateString('id-ID', options)}`;
+                    
+                    // --- FIX: Manual date parsing to avoid timezone issues ---
+                    const isoString = statusData.lastUpdated; // e.g., "2025-11-12T20:49:03.546720"
+                    const datePart = isoString.split('T')[0]; // "2025-11-12"
+                    const timePart = isoString.split('T')[1]; // "20:49:03.546720"
+
+                    const [year, month, day] = datePart.split('-');
+                    const [hour, minute] = timePart.split(':');
+
+                    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+                    const monthName = monthNames[parseInt(month, 10) - 1];
+
+                    const formattedString = `${parseInt(day, 10)} ${monthName} ${year} pukul ${hour}.${minute}`;
+                    updateStatusElement.textContent = `Terakhir Update: ${formattedString}`;
+                    // --- END FIX ---
+
                 } else {
                     updateStatusElement.textContent = 'Status update tidak tersedia.';
                 }
