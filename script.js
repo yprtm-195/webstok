@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- NEW: Global variable for pre-fetched data ---
-    let ALL_STOCK_DATA = null; // ALL_STOCK_DATA ini mungkin tidak lagi digunakan secara langsung
     let MASTER_PRODUCT_LIST = [];
     
     // --- NEW: API and Cache URLs ---
@@ -14,45 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // atau hanya di-load saat ada request spesifik ke global live-stock
     const fetchPrimaryData = async () => {
         console.log('Fetching primary data...');
-        let stockDataSource = '';
-        
-        // Untuk sekarang, kita tetap coba ambil data global jika diperlukan untuk fitur lain.
-        // Jika tidak ada fitur yang membutuhkan ALL_STOCK_DATA secara keseluruhan,
-        // fungsi ini bisa di-refactor atau dihapus.
-        try {
-            console.log(`Attempting to fetch from live API: ${CMS_API_URL}`);
-            const stockResponse = await fetch(CMS_API_URL, {
-                headers: { 'ngrok-skip-browser-warning': 'true' }
-            });
-
-            if (stockResponse.ok) {
-                ALL_STOCK_DATA = await stockResponse.json();
-                stockDataSource = 'Live API';
-                console.log('Successfully loaded data from Live API.');
-            } else {
-                throw new Error(`Live API failed with status: ${stockResponse.status}`);
-            }
-        } catch (apiError) {
-            console.warn(`Live API fetch failed: ${apiError.message}. Falling back to local cache.`);
-            
-            // 2. Fallback to local live_stock.json
-            try {
-                console.log(`Attempting to fetch from local cache: ${CACHE_URL}`);
-                const cacheResponse = await fetch(CACHE_URL);
-                if (cacheResponse.ok) {
-                    ALL_STOCK_DATA = await cacheResponse.json();
-                    stockDataSource = 'Local Cache (live_stock.json)';
-                    console.log('Successfully loaded data from local cache.');
-                } else {
-                    throw new Error(`Local cache failed with status: ${cacheResponse.status}`);
-                }
-            } catch (cacheError) {
-                console.error(`CRITICAL: Both live API and local cache failed. Error: ${cacheError.message}`);
-                ALL_STOCK_DATA = {}; // Set to empty object to prevent app from crashing
-                stockDataSource = 'Failed';
-            }
-        }
-
+        const stockDataSource = 'Live API'; // Sumber data sekarang selalu direct API
 
         // Fetch other necessary files (listproduk.txt, update_status.json) in parallel
         try {
@@ -131,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- DIRECT EXPORT FUNCTIONS (MODIFIED) ---
-    function runDirectExport() {
+    async function runDirectExport() {
         const statusText = document.getElementById('status-text');
         const statusProgress = document.getElementById('status-progress');
         const urlParams = new URLSearchParams(window.location.search);
@@ -139,39 +100,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!storeCode) {
             statusText.textContent = 'Error: Parameter ?store=[kode_toko] tidak ada di URL.';
-            statusProgress.remove();
+            if (statusProgress) statusProgress.remove();
             return;
         }
 
-        statusText.textContent = `Menyiapkan data untuk toko ${storeCode}...`;
-        
-        const storeData = ALL_STOCK_DATA ? ALL_STOCK_DATA[storeCode.toUpperCase()] : null;
+        statusText.textContent = `Mengambil data untuk toko ${storeCode}...`;
+        if (statusProgress) statusProgress.value = 30;
 
-        if (!storeData) {
-            statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>Data untuk toko ${storeCode} tidak ditemukan, baik di live API maupun di cache.`;
-            statusProgress.remove();
-            return;
+        try {
+            const response = await fetch(`${CMS_STORE_API_URL}/${storeCode.toUpperCase()}`);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di API.`);
+                }
+                throw new Error(`Gagal mengambil data dari API (Status: ${response.status})`);
+            }
+            
+            const data = await response.json();
+            const storeData = data[storeCode.toUpperCase()];
+
+            if (!storeData) {
+                throw new Error(`Struktur data API tidak sesuai atau data toko tidak ditemukan di dalam respons.`);
+            }
+
+            if (statusProgress) statusProgress.value = 70;
+            statusText.textContent = 'Memproses data...';
+
+            const finalProductList = storeData.map(item => ({
+                code: item.kodeproduk,
+                name: item.namaproduk,
+                stock: item.stock
+            }));
+
+            statusText.textContent = 'Sip, beres! Data siap diunduh.';
+            if (statusProgress) statusProgress.value = 100;
+            
+            const header = 'kodeproduk,namaproduk,stok\n';
+            const rows = finalProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
+            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
+
+            const img = document.createElement('img');
+            img.src = 'sukses.gif';
+            img.alt = 'Success!';
+            img.className = 'mt-4';
+
+            // Hapus progress bar sebelum menampilkan gambar sukses
+            if (statusProgress) statusProgress.remove();
+            statusText.insertAdjacentElement('afterend', img);
+
+        } catch (error) {
+            console.error('Direct export failed:', error);
+            statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>${error.message}`;
+            if (statusProgress) statusProgress.remove();
         }
-        
-        // Data from cache is already in the desired format {kodeproduk, namaproduk, stock}
-        const finalProductList = storeData.map(item => ({
-            code: item.kodeproduk,
-            name: item.namaproduk,
-            stock: item.stock
-        }));
-
-        statusText.textContent = 'Sip, beres! Data siap diunduh.';
-        statusProgress.value = 100;
-        
-        const header = 'kodeproduk,namaproduk,stok\n';
-        const rows = finalProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
-        downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
-
-        const img = document.createElement('img');
-        img.src = 'sukses.gif';
-        img.alt = 'Success!';
-        img.className = 'mt-4';
-        statusText.insertAdjacentElement('afterend', img);
     }
 
     // --- INTERACTIVE PAGE FUNCTIONS (MODIFIED) ---
