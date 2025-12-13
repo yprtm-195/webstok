@@ -3,7 +3,7 @@ const path = require('path');
 const fetch = require('node-fetch');
 
 // --- CONFIGURATION ---
-const API_BASE_URL = 'https://retractile-asha-guiltlessly.ngrok-free.dev/api/stok/';
+const API_BASE_URL = 'https://dashboard.myserverzone.my.id/api/stok/';
 const TOKO_LIST_FILE = path.join(__dirname, 'listtoko.txt');
 const PRODUK_LIST_FILE = path.join(__dirname, 'listproduk.txt');
 const OUTPUT_FILE = path.join(__dirname, 'live_stock.json');

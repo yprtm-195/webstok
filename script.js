@@ -104,27 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        statusText.textContent = `Mengambil data untuk toko ${storeCode}...`;
-        if (statusProgress) statusProgress.value = 30;
-
-        try {
-            const response = await fetch(`${CMS_STORE_API_URL}/${storeCode.toUpperCase()}`);
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di API.`);
-                }
-                throw new Error(`Gagal mengambil data dari API (Status: ${response.status})`);
-            }
-            
-            const data = await response.json();
-            const storeData = data[storeCode.toUpperCase()];
-
-            if (!storeData) {
-                throw new Error(`Struktur data API tidak sesuai atau data toko tidak ditemukan di dalam respons.`);
-            }
-
+        const processAndDownload = (storeData, dataSource) => {
+            statusText.textContent = `Memproses data dari ${dataSource}...`;
             if (statusProgress) statusProgress.value = 70;
-            statusText.textContent = 'Memproses data...';
 
             const finalProductList = storeData.map(item => ({
                 code: item.kodeproduk,
@@ -132,9 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 stock: item.stock
             }));
 
-            statusText.textContent = 'Sip, beres! Data siap diunduh.';
+            statusText.textContent = `Sip, beres! Data dari ${dataSource} siap diunduh.`;
             if (statusProgress) statusProgress.value = 100;
-            
+
             const header = 'kodeproduk,namaproduk,stok\n';
             const rows = finalProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
             downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
@@ -144,15 +126,49 @@ document.addEventListener('DOMContentLoaded', () => {
             img.alt = 'Success!';
             img.className = 'mt-4';
 
-            // Hapus progress bar sebelum menampilkan gambar sukses
             if (statusProgress) statusProgress.remove();
             statusText.insertAdjacentElement('afterend', img);
+        };
 
-        } catch (error) {
-            console.error('Direct export failed:', error);
-            statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>${error.message}`;
-            if (statusProgress) statusProgress.remove();
-        }
+        const fetchFromAPI = async () => {
+            statusText.textContent = `Mengambil data dari API untuk toko ${storeCode}...`;
+            if (statusProgress) statusProgress.value = 30;
+            try {
+                const response = await fetch(`${CMS_STORE_API_URL}/${storeCode.toUpperCase()}`);
+                if (!response.ok) {
+                    if (response.status === 404) throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di API.`);
+                    throw new Error(`Gagal mengambil data dari API (Status: ${response.status})`);
+                }
+                const data = await response.json();
+                const storeData = data[storeCode.toUpperCase()];
+                if (!storeData) throw new Error(`Struktur data API tidak sesuai.`);
+                
+                processAndDownload(storeData, 'API');
+
+            } catch (error) {
+                console.warn('API fetch failed for direct export, falling back to cache.', error);
+                await fetchFromCache(storeCode); // Fallback to cache
+            }
+        };
+
+        const fetchFromCache = async (code) => {
+            statusText.textContent = `API gagal, mencoba mengambil data dari cache (live_stock.json) untuk toko ${code}...`;
+            if (statusProgress) statusProgress.value = 50;
+            try {
+                const response = await fetch(CACHE_URL);
+                if (!response.ok) throw new Error('Cache file (live_stock.json) tidak ditemukan atau tidak bisa dibaca.');
+                const data = await response.json();
+                const storeData = data[code.toUpperCase()];
+                if (!storeData) throw new Error(`Data untuk toko ${code} tidak ditemukan di dalam cache.`);
+                
+                processAndDownload(storeData, 'Cache');
+
+            } catch (cacheError) {
+                handleError(cacheError, 'Gagal mengambil data dari API dan juga dari cache.');
+            }
+        };
+
+        await fetchFromAPI();
     }
 
     // --- INTERACTIVE PAGE FUNCTIONS (MODIFIED) ---
@@ -249,38 +265,66 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
             
-            // NEW: Fetch data specific to the store from the new API endpoint
+            // --- MODIFIED FETCH LOGIC WITH FALLBACK ---
             fetch(`${CMS_STORE_API_URL}/${storeCode}`)
                 .then(response => {
                     if (!response.ok) {
-                        if (response.status === 404) {
-                            throw new Error(`Data untuk toko ${storeCode} tidak ditemukan.`);
-                        }
-                        throw new Error(`Gagal mengambil data stok dari API untuk toko ${storeCode}. Status: ${response.status}`);
+                        throw new Error(`API request failed with status ${response.status}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    // API ini mengembalikan { "STORECODE": [ ...data produk... ] }
-                    // Kita perlu mengambil array produk dari objek yang dikembalikan
                     const storeData = data[storeCode]; 
-                    if (!storeData || storeData.length === 0) {
-                        // Jika API mengembalikan 200 OK tapi array storeData kosong
-                        handleError(new Error(`Data produk untuk toko ${storeCode} tidak ditemukan di API.`));
-                        return;
+                    if (!storeData) {
+                         throw new Error('Struktur data API tidak sesuai atau data toko tidak ada.');
                     }
-
-                    currentProductList = storeData.map(item => ({
-                        code: item.kodeproduk,
-                        name: item.namaproduk,
-                        stock: item.stock,
-                        image: 'oos.png' // placeholder
-                    }));
-                    
-                    renderCards(currentProductList);
-                    resultsHeader.classList.remove('is-hidden');
+                    console.log(`Successfully fetched data for ${storeCode} from API.`);
+                    processAndRender(storeData, 'API');
                 })
-                .catch(handleError);
+                .catch(apiError => {
+                    console.warn(`API fetch for ${storeCode} failed: ${apiError.message}. Falling back to cache.`);
+                    fetchFromCache(storeCode);
+                });
+        }
+
+        function fetchFromCache(storeCode) {
+            fetch(CACHE_URL)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Cache file '${CACHE_URL}' tidak dapat dimuat.`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const storeData = data[storeCode];
+                    if (!storeData) {
+                        throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di dalam cache.`);
+                    }
+                    console.log(`Successfully fetched data for ${storeCode} from Cache.`);
+                    processAndRender(storeData, 'Cache');
+                })
+                .catch(cacheError => {
+                    handleError(cacheError, `Gagal mengambil data dari API dan juga dari cache.`);
+                });
+        }
+
+        function processAndRender(storeData, dataSource) {
+             currentProductList = storeData.map(item => ({
+                code: item.kodeproduk,
+                name: item.namaproduk,
+                stock: item.stock,
+                image: 'oos.png' // placeholder
+            }));
+            
+            renderCards(currentProductList);
+            resultsHeader.classList.remove('is-hidden');
+            
+            const updateStatusElement = document.getElementById('update-status');
+            if (updateStatusElement.textContent.includes('Update Terakhir')) {
+                 updateStatusElement.textContent = updateStatusElement.textContent.replace(/\(.*\)/, `(${dataSource})`);
+            } else {
+                updateStatusElement.textContent = `Sumber Data: ${dataSource}. Status update tidak tersedia.`;
+            }
         }
 
         function renderCards(products) {
@@ -310,9 +354,10 @@ document.addEventListener('DOMContentLoaded', () => {
             `).join('');
         }
 
-        function handleError(error) {
+        function handleError(error, customMessage) {
             console.error('Proses gagal:', error);
-            tableContainer.innerHTML = `<div class="notification is-danger"><strong>Waduh, Gagal!</strong><p>${error.message}</p></div>`;
+            const message = customMessage || 'Waduh, Gagal!';
+            tableContainer.innerHTML = `<div class="notification is-danger"><strong>${message}</strong><p>${error.message}</p></div>`;
         }
         
         exportCsvButton.addEventListener('click', () => {
