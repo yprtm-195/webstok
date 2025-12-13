@@ -1,0 +1,39 @@
+name: Generate Live Stock Cache
+
+on:
+  schedule:
+    - cron: '0 23 * * *' # Runs daily at 23:00 UTC (6 AM WIB)
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true # Cancel any in-progress runs when a new one is triggered
+
+jobs:
+  generate_cache:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x' # Use a general Python 3 version
+
+    - name: Install dependencies
+      run: pip install requests
+
+    - name: Run cache generation script
+      run: python generate_cache.py
+      env:
+        APPS_SCRIPT_CMS_URL: ${{ secrets.APPS_SCRIPT_CMS_URL }}
+
+    - name: Commit and push changes
+      run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "actions@github.com"
+        git add live_stock.json update_status.json listtoko.txt
+        git commit -m "Automated: Update stock cache and store list" || echo "No changes to commit"
+        git push origin main
