@@ -85,8 +85,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DIRECT EXPORT FUNCTIONS (Refactored to use cache only) ---
     function runDirectExport() {
-        // This function is for direct.html, which is not being used in the main page.
-        // It's left here for compatibility if you decide to use direct.html
+        const statusText = document.getElementById('status-text');
+        const statusProgress = document.getElementById('status-progress');
+        const urlParams = new URLSearchParams(window.location.search);
+        const storeCode = urlParams.get('store');
+
+        if (!storeCode) {
+            statusText.textContent = 'Error: Parameter ?store=[kode_toko] tidak ada di URL.';
+            if (statusProgress) statusProgress.remove();
+            return;
+        }
+
+        statusText.textContent = `Mencari data untuk toko ${storeCode}...`;
+        if (statusProgress) statusProgress.value = 30;
+
+        try {
+            // Check if ALL_STOCK_DATA is populated
+            if (Object.keys(ALL_STOCK_DATA).length === 0) {
+                throw new Error(`Cache live_stock.json kosong atau belum termuat.`);
+            }
+            
+            const storeData = ALL_STOCK_DATA[storeCode.toUpperCase()];
+            if (!storeData) {
+                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di file live_stock.json.`);
+            }
+
+            statusText.textContent = `Memproses data...`;
+            if (statusProgress) statusProgress.value = 70;
+
+            const header = 'kodeproduk,namaproduk,stok\n';
+            const rows = storeData.map(p => `${p.kodeproduk},"${p.namaproduk.replace(/"/g, '""')}",${p.stock}`).join('\n');
+            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
+            
+            statusText.textContent = `Sip, beres! Data siap diunduh.`;
+            if (statusProgress) statusProgress.value = 100;
+
+            const img = document.createElement('img');
+            img.src = 'sukses.gif'; // Assuming sukses.gif is in the same folder
+            img.alt = 'Success!';
+            img.className = 'mt-4';
+
+            if (statusProgress) statusProgress.remove();
+            statusText.insertAdjacentElement('afterend', img);
+
+        } catch (error) {
+            console.error('Proses direct export gagal:', error);
+            statusText.textContent = `Waduh, Gagal! ${error.message}`;
+            if (statusProgress) statusProgress.remove();
+        }
     }
 
     // --- INTERACTIVE PAGE FUNCTIONS (Refactored to use cache only) ---
