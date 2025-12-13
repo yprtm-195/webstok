@@ -114,4 +114,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
+    # Jalankan fungsi utama
     main()
