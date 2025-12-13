@@ -1,9 +1,9 @@
 name: Generate Live Stock Cache
 
 on:
-  schedule:
-    - cron: '0 23 * * *' # Runs daily at 23:00 UTC (6 AM WIB)
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  repository_dispatch:
+    types: [data-updated] # Kita kasih nama event-nya 'data-updated'
+  workflow_dispatch: # workflow_dispatch tetap ada biar bisa dites manual
 
 concurrency:
   group: ${{ github.workflow }}
