@@ -1,20 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- NEW: Global variable for pre-fetched data ---
+    // --- Global variables for pre-fetched data ---
     let MASTER_PRODUCT_LIST = [];
-    let ALL_STOCK_DATA = {}; // NEW: To hold all stock data from the JSON file
+    let ALL_STOCK_DATA = {}; // To hold all stock data from the JSON file
     
-    // --- API and Cache URLs ---
-    const CMS_API_URL = 'https://dashboard.myserverzone.my.id/api/live-stock'; // Fallback (not primary)
-    const CACHE_URL = 'live_stock.json'; // CHANGED: This is now the primary data source
+    // --- Data Source URL ---
+    const CACHE_URL = 'live_stock.json'; // Primary data source
 
-    // --- Function to fetch primary data files ---
+    // --- Function to fetch all primary data files on page load ---
     const fetchPrimaryData = async () => {
         console.log('Fetching primary data from local files...');
-        let stockDataSource = 'Cache'; // CHANGED: Default to cache
-
         try {
-            // Fetch all necessary files in parallel: live_stock.json, listproduk.txt, update_status.json
+            // Fetch all necessary files in parallel
             const [stockResponse, productResponse, statusResponse] = await Promise.all([
                 fetch(CACHE_URL).catch(e => { console.error('Cache fetch failed:', e); return { ok: false }; }),
                 fetch('listproduk.txt').catch(e => { console.error('Product list fetch failed:', e); return { ok: false }; }),
@@ -27,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`Successfully loaded stock data for ${Object.keys(ALL_STOCK_DATA).length} stores from ${CACHE_URL}.`);
             } else {
                 console.error(`CRITICAL: Failed to load ${CACHE_URL}. App may not function correctly.`);
-                stockDataSource = 'Not Available';
             }
 
             // Process listproduk.txt
@@ -55,13 +51,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
                     const monthName = monthNames[parseInt(month, 10) - 1];
                     const formattedString = `${parseInt(day, 10)} ${monthName} ${year} ${hour}:${minute}`;
-                    updateStatusElement.textContent = `Update Terakhir (${stockDataSource}): ${formattedString}`;
+                    updateStatusElement.textContent = `Update Terakhir: ${formattedString}`;
                 } else {
-                    updateStatusElement.textContent = `Sumber Data: ${stockDataSource}. Status update tidak tersedia.`;
+                    updateStatusElement.textContent = 'Status update tidak tersedia.';
                 }
             }
         } catch (error) {
-            console.error('An error occurred during secondary data fetch:', error);
+            console.error('An error occurred during primary data fetch:', error);
             const updateStatusElement = document.getElementById('update-status');
             if (updateStatusElement) {
                 updateStatusElement.textContent = 'Gagal memuat data pendukung.';
@@ -89,18 +85,18 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     };
 
-    // --- CONTEXT-AWARE LOGIC ---
+    // --- Main Logic Execution ---
     fetchPrimaryData().then(() => {
         const statusContainer = document.getElementById('status-container');
         if (statusContainer) {
-            runDirectExport();
+            runDirectExport(); // Logic for direct.html
         } else {
-            initializeInteractivePage();
+            initializeInteractivePage(); // Logic for index.html
         }
     });
 
-    // --- DIRECT EXPORT FUNCTIONS (MODIFIED) ---
-    async function runDirectExport() {
+    // --- DIRECT EXPORT FUNCTIONS (Refactored to use cache only) ---
+    function runDirectExport() {
         const statusText = document.getElementById('status-text');
         const statusProgress = document.getElementById('status-progress');
         const urlParams = new URLSearchParams(window.location.search);
@@ -112,19 +108,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        statusText.textContent = `Mengambil data untuk toko ${storeCode}...`;
+        statusText.textContent = `Mencari data untuk toko ${storeCode}...`;
         if (statusProgress) statusProgress.value = 30;
 
         try {
-            // NEW: Get data from the pre-loaded cache
             const storeData = ALL_STOCK_DATA[storeCode.toUpperCase()];
-
             if (!storeData) {
-                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di cache (file live_stock.json).`);
+                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di file live_stock.json.`);
             }
 
+            statusText.textContent = `Memproses data...`;
             if (statusProgress) statusProgress.value = 70;
-            statusText.textContent = 'Memproses data...';
 
             const finalProductList = storeData.map(item => ({
                 code: item.kodeproduk,
@@ -132,30 +126,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 stock: item.stock
             }));
 
-            statusText.textContent = 'Sip, beres! Data siap diunduh.';
-            if (statusProgress) statusProgress.value = 100;
-            
             const header = 'kodeproduk,namaproduk,stok\n';
             const rows = finalProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
             downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
+            
+            statusText.textContent = `Sip, beres! Data siap diunduh.`;
+            if (statusProgress) statusProgress.value = 100;
 
             const img = document.createElement('img');
             img.src = 'sukses.gif';
             img.alt = 'Success!';
             img.className = 'mt-4';
 
-            // Hapus progress bar sebelum menampilkan gambar sukses
             if (statusProgress) statusProgress.remove();
             statusText.insertAdjacentElement('afterend', img);
 
         } catch (error) {
-            console.error('Direct export failed:', error);
-            statusText.innerHTML = `<strong>Waduh, Gagal!</strong><br>${error.message}`;
+            console.error('Proses direct export gagal:', error);
+            statusText.textContent = `Waduh, Gagal! ${error.message}`;
             if (statusProgress) statusProgress.remove();
         }
     }
 
-    // --- INTERACTIVE PAGE FUNCTIONS (MODIFIED) ---
+    // --- INTERACTIVE PAGE FUNCTIONS (Refactored to use cache only) ---
     function initializeInteractivePage() {
         const fetchButton = document.getElementById('fetchButton');
         const storeCodeInput = document.getElementById('storeCodeInput');
@@ -238,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function fetchStockData() {
             const storeCode = (selectedStoreInfo.code || storeCodeInput.value.trim()).toUpperCase();
             if (!storeCode) {
-                tableContainer.innerHTML = `<div class="notification is-warning is-light">Pilih dulu tokonya.</div>`;
+                handleError(new Error("Pilih dulu tokonya."), "Perhatian");
                 return;
             }
             if (!selectedStoreInfo.name || selectedStoreInfo.code !== storeCode) {
@@ -249,7 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
             
-            // NEW: Get data from the pre-loaded cache
             try {
                 const storeData = ALL_STOCK_DATA[storeCode];
                 if (!storeData || storeData.length === 0) {
@@ -298,18 +290,22 @@ document.addEventListener('DOMContentLoaded', () => {
             `).join('');
         }
 
-        function handleError(error) {
+        function handleError(error, customMessage) {
             console.error('Proses gagal:', error);
-            tableContainer.innerHTML = `<div class="notification is-danger"><strong>Waduh, Gagal!</strong><p>${error.message}</p></div>`;
+            const message = customMessage || 'Waduh, Gagal!';
+            tableContainer.innerHTML = `<div class="notification is-danger"><strong>${message}</strong><p>${error.message}</p></div>`;
+            resultsHeader.classList.add('is-hidden');
         }
         
         exportCsvButton.addEventListener('click', () => {
+            if(currentProductList.length === 0) return;
             const header = 'kodeproduk,namaproduk,stok\n';
             const rows = currentProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
             downloadFile(`stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, header + rows);
         });
 
         exportExcelButton.addEventListener('click', () => {
+            if(currentProductList.length === 0) return;
             const headers = ['Kode Toko', 'Nama Toko', ...currentProductList.map(p => p.name.replace(/"/g, ''))];
             const values = [selectedStoreInfo.code, selectedStoreInfo.name, ...currentProductList.map(p => p.stock)];
             const csvContent = headers.join(',') + '\n' + values.join(',');
