@@ -2,25 +2,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- NEW: Global variable for pre-fetched data ---
     let MASTER_PRODUCT_LIST = [];
+    let ALL_STOCK_DATA = {}; // NEW: To hold all stock data from the JSON file
     
-    // --- NEW: API and Cache URLs ---
-    const CMS_API_URL = 'https://dashboard.myserverzone.my.id/api/live-stock'; // Ini tetap untuk fallback atau data global (jika diperlukan untuk fitur lain)
-    const CMS_STORE_API_URL = 'https://dashboard.myserverzone.my.id/api/live-stock-by-store'; // NEW: Untuk per toko spesifik
-    const CACHE_URL = 'live_stock.json';
+    // --- API and Cache URLs ---
+    const CMS_API_URL = 'https://dashboard.myserverzone.my.id/api/live-stock'; // Fallback (not primary)
+    const CACHE_URL = 'live_stock.json'; // CHANGED: This is now the primary data source
 
-    // --- NEW: Function to fetch primary data files with Fallback Logic ---
-    // Fungsi ini bisa jadi akan di-refactor ulang jika ALL_STOCK_DATA tidak lagi diperlukan
-    // atau hanya di-load saat ada request spesifik ke global live-stock
+    // --- Function to fetch primary data files ---
     const fetchPrimaryData = async () => {
-        console.log('Fetching primary data...');
-        const stockDataSource = 'Live API'; // Sumber data sekarang selalu direct API
+        console.log('Fetching primary data from local files...');
+        let stockDataSource = 'Cache'; // CHANGED: Default to cache
 
-        // Fetch other necessary files (listproduk.txt, update_status.json) in parallel
         try {
-            const [productResponse, statusResponse] = await Promise.all([
-                fetch('listproduk.txt'),
-                fetch('update_status.json')
+            // Fetch all necessary files in parallel: live_stock.json, listproduk.txt, update_status.json
+            const [stockResponse, productResponse, statusResponse] = await Promise.all([
+                fetch(CACHE_URL).catch(e => { console.error('Cache fetch failed:', e); return { ok: false }; }),
+                fetch('listproduk.txt').catch(e => { console.error('Product list fetch failed:', e); return { ok: false }; }),
+                fetch('update_status.json').catch(e => { console.error('Status fetch failed:', e); return { ok: false }; })
             ]);
+
+            // Process live_stock.json
+            if (stockResponse.ok) {
+                ALL_STOCK_DATA = await stockResponse.json();
+                console.log(`Successfully loaded stock data for ${Object.keys(ALL_STOCK_DATA).length} stores from ${CACHE_URL}.`);
+            } else {
+                console.error(`CRITICAL: Failed to load ${CACHE_URL}. App may not function correctly.`);
+                stockDataSource = 'Not Available';
+            }
 
             // Process listproduk.txt
             if (productResponse.ok) {
@@ -108,19 +116,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusProgress) statusProgress.value = 30;
 
         try {
-            const response = await fetch(`${CMS_STORE_API_URL}/${storeCode.toUpperCase()}`);
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di API.`);
-                }
-                throw new Error(`Gagal mengambil data dari API (Status: ${response.status})`);
-            }
-            
-            const data = await response.json();
-            const storeData = data[storeCode.toUpperCase()];
+            // NEW: Get data from the pre-loaded cache
+            const storeData = ALL_STOCK_DATA[storeCode.toUpperCase()];
 
             if (!storeData) {
-                throw new Error(`Struktur data API tidak sesuai atau data toko tidak ditemukan di dalam respons.`);
+                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di cache (file live_stock.json).`);
             }
 
             if (statusProgress) statusProgress.value = 70;
@@ -249,38 +249,26 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.innerHTML = '<progress class="progress is-large is-info" max="100">60%</progress>';
             resultsHeader.classList.add('is-hidden');
             
-            // NEW: Fetch data specific to the store from the new API endpoint
-            fetch(`${CMS_STORE_API_URL}/${storeCode}`)
-                .then(response => {
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            throw new Error(`Data untuk toko ${storeCode} tidak ditemukan.`);
-                        }
-                        throw new Error(`Gagal mengambil data stok dari API untuk toko ${storeCode}. Status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    // API ini mengembalikan { "STORECODE": [ ...data produk... ] }
-                    // Kita perlu mengambil array produk dari objek yang dikembalikan
-                    const storeData = data[storeCode]; 
-                    if (!storeData || storeData.length === 0) {
-                        // Jika API mengembalikan 200 OK tapi array storeData kosong
-                        handleError(new Error(`Data produk untuk toko ${storeCode} tidak ditemukan di API.`));
-                        return;
-                    }
+            // NEW: Get data from the pre-loaded cache
+            try {
+                const storeData = ALL_STOCK_DATA[storeCode];
+                if (!storeData || storeData.length === 0) {
+                    throw new Error(`Data produk untuk toko ${storeCode} tidak ditemukan di file cache (live_stock.json).`);
+                }
 
-                    currentProductList = storeData.map(item => ({
-                        code: item.kodeproduk,
-                        name: item.namaproduk,
-                        stock: item.stock,
-                        image: 'oos.png' // placeholder
-                    }));
-                    
-                    renderCards(currentProductList);
-                    resultsHeader.classList.remove('is-hidden');
-                })
-                .catch(handleError);
+                currentProductList = storeData.map(item => ({
+                    code: item.kodeproduk,
+                    name: item.namaproduk,
+                    stock: item.stock,
+                    image: 'oos.png' // placeholder
+                }));
+                
+                renderCards(currentProductList);
+                resultsHeader.classList.remove('is-hidden');
+
+            } catch (error) {
+                handleError(error);
+            }
         }
 
         function renderCards(products) {
