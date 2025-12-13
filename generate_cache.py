@@ -4,19 +4,14 @@ import os
 from datetime import datetime
 
 # --- KONFIGURASI ---
-# URL dari Apps Script yang membaca sheet "Stok Terkini" dan "Daftar Produk"
 APPS_SCRIPT_CMS_URL = "https://script.google.com/macros/s/AKfycbxTNN-7FaYzql3TZza6dvPcQRFfizCsq_JAh3ZYrWL6amYkHUZO_RdomRJBslSBBHFQvg/exec"
-
-# File-file output
 OUTPUT_FILE = "live_stock.json"
 STATUS_FILE = "update_status.json"
+LIST_TOKO_FILE = "listtoko.txt"
 
 # --- FUNGSI-FUNGSI HELPER ---
 
 def fetch_data_from_cms(url):
-    """
-    Mengambil data gabungan (pivot dan product map) dari Google Apps Script CMS.
-    """
     print(f"Mengambil data dari Apps Script CMS: {url}")
     try:
         response = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
@@ -49,34 +44,39 @@ def main():
         # 1. Ambil data gabungan dari Apps Script CMS
         cms_data = fetch_data_from_cms(APPS_SCRIPT_CMS_URL)
         pivot_data = cms_data['pivotData']
-        product_code_map = cms_data['productMap'] # Ini adalah object/dict, bukan Map
+        product_code_map = cms_data['productMap']
 
         if not pivot_data or len(pivot_data) <= 1:
             print("Tidak ada data pivot dari Apps Script CMS untuk diproses. Keluar.")
             return
 
-        # 2. Transformasi data (un-pivot)
-        print('Memulai transformasi data (un-pivot) ke format live_stock.json...')
+        # 2. Transformasi data (un-pivot) dan buat listtoko.txt
+        print('Memulai transformasi data (un-pivot) ke format live_stock.json dan pembuatan listtoko.txt...')
         all_stock_data_transformed = {}
         
         headers = pivot_data[0]
         metadata_cols = ['Kode toko', 'Nama Toko', 'Cabang']
         product_name_headers = [h for h in headers if h not in metadata_cols]
         
+        unique_stores = set()
+        
         for row_idx in range(1, len(pivot_data)):
             row = pivot_data[row_idx]
             store_code = row[0]
+            store_name = row[1]
+            
             if not store_code:
                 print(f"Peringatan: Baris {row_idx} tidak memiliki Kode toko, dilewati.")
                 continue
 
+            unique_stores.add((store_code, store_name))
             products_for_this_store = []
             
             for col_idx, header_name in enumerate(headers):
                 if header_name in product_name_headers:
                     product_name = header_name
                     stock = row[col_idx]
-                    kodeproduk = product_code_map.get(product_name, 'N/A') # Gunakan .get() untuk keamanan
+                    kodeproduk = product_code_map.get(product_name, 'N/A')
                     
                     products_for_this_store.append({
                         "kodeproduk": kodeproduk,
@@ -98,6 +98,14 @@ def main():
         with open(STATUS_FILE, 'w', encoding='utf-8') as f:
             json.dump(update_status, f, indent=2, ensure_ascii=False)
         print(f"Berhasil generate {STATUS_FILE}.")
+
+        # 5. Tulis file listtoko.txt
+        with open(LIST_TOKO_FILE, 'w', encoding='utf-8') as f:
+            f.write("kodetoko,namatoko\n") # Header yang benar untuk listtoko.txt
+            sorted_stores = sorted(list(unique_stores), key=lambda x: x[0])
+            for code, name in sorted_stores:
+                f.write(f"{code},{name}\n")
+        print(f"Berhasil generate {LIST_TOKO_FILE} dengan {len(unique_stores)} toko.")
 
         print('\nProses pembuatan cache selesai dengan sukses!')
 
