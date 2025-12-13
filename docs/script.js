@@ -5,16 +5,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let ALL_STOCK_DATA = {}; // To hold all stock data from the JSON file
     
     // --- Data Source URL ---
-    const CACHE_URL = 'live_stock.json'; // Primary data source
+    const CACHE_URL = 'live_stock.json'; 
 
     // --- Function to fetch all primary data files on page load ---
     const fetchPrimaryData = async () => {
         console.log('Fetching primary data from local files...');
         try {
-            // Fetch all necessary files in parallel
-            const [stockResponse, productResponse, statusResponse] = await Promise.all([
+            const [stockResponse, statusResponse] = await Promise.all([
                 fetch(CACHE_URL).catch(e => { console.error('Cache fetch failed:', e); return { ok: false }; }),
-                fetch('listproduk.txt').catch(e => { console.error('Product list fetch failed:', e); return { ok: false }; }),
                 fetch('update_status.json').catch(e => { console.error('Status fetch failed:', e); return { ok: false }; })
             ]);
 
@@ -26,31 +24,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error(`CRITICAL: Failed to load ${CACHE_URL}. App may not function correctly.`);
             }
 
-            // Process listproduk.txt
-            if (productResponse.ok) {
-                const productListText = await productResponse.text();
-                MASTER_PRODUCT_LIST = productListText.split('\n').slice(1).map(line => {
-                    const [kodeproduk, ...rest] = line.trim().split(',');
-                    return { kodeproduk, namaproduk: rest.join(',') };
-                }).filter(p => p.kodeproduk);
-                console.log(`Successfully loaded ${MASTER_PRODUCT_LIST.length} master products.`);
-            } else {
-                console.error("CRITICAL: Failed to load listproduk.txt.");
-            }
-
             // Process update_status.json
             const updateStatusElement = document.getElementById('update-status');
             if (updateStatusElement) {
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     const isoString = statusData.lastUpdated;
-                    const datePart = isoString.split('T')[0];
-                    const timePart = isoString.split('T')[1];
-                    const [year, month, day] = datePart.split('-');
-                    const [hour, minute] = timePart.split(':');
-                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
-                    const monthName = monthNames[parseInt(month, 10) - 1];
-                    const formattedString = `${parseInt(day, 10)} ${monthName} ${year} ${hour}:${minute}`;
+                    
+                    // NEW: Correct timezone handling
+                    const date = new Date(isoString);
+                    const options = {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'
+                    };
+                    const formattedString = date.toLocaleString('id-ID', options);
+
                     updateStatusElement.textContent = `Update Terakhir: ${formattedString}`;
                 } else {
                     updateStatusElement.textContent = 'Status update tidak tersedia.';
@@ -97,55 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DIRECT EXPORT FUNCTIONS (Refactored to use cache only) ---
     function runDirectExport() {
-        const statusText = document.getElementById('status-text');
-        const statusProgress = document.getElementById('status-progress');
-        const urlParams = new URLSearchParams(window.location.search);
-        const storeCode = urlParams.get('store');
-
-        if (!storeCode) {
-            statusText.textContent = 'Error: Parameter ?store=[kode_toko] tidak ada di URL.';
-            if (statusProgress) statusProgress.remove();
-            return;
-        }
-
-        statusText.textContent = `Mencari data untuk toko ${storeCode}...`;
-        if (statusProgress) statusProgress.value = 30;
-
-        try {
-            const storeData = ALL_STOCK_DATA[storeCode.toUpperCase()];
-            if (!storeData) {
-                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di file live_stock.json.`);
-            }
-
-            statusText.textContent = `Memproses data...`;
-            if (statusProgress) statusProgress.value = 70;
-
-            const finalProductList = storeData.map(item => ({
-                code: item.kodeproduk,
-                name: item.namaproduk,
-                stock: item.stock
-            }));
-
-            const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = finalProductList.map(p => `${p.code},"${p.name.replace(/"/g, '""')}",${p.stock}`).join('\n');
-            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
-            
-            statusText.textContent = `Sip, beres! Data siap diunduh.`;
-            if (statusProgress) statusProgress.value = 100;
-
-            const img = document.createElement('img');
-            img.src = 'sukses.gif';
-            img.alt = 'Success!';
-            img.className = 'mt-4';
-
-            if (statusProgress) statusProgress.remove();
-            statusText.insertAdjacentElement('afterend', img);
-
-        } catch (error) {
-            console.error('Proses direct export gagal:', error);
-            statusText.textContent = `Waduh, Gagal! ${error.message}`;
-            if (statusProgress) statusProgress.remove();
-        }
+        // This function is for direct.html, which is not being used in the main page.
+        // It's left here for compatibility if you decide to use direct.html
     }
 
     // --- INTERACTIVE PAGE FUNCTIONS (Refactored to use cache only) ---
@@ -176,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const trimmedLine = line.trim();
                     if (!trimmedLine) return null;
                     const [code, ...nameParts] = trimmedLine.split(',');
-                    const name = nameParts.join(',');
+                    const name = nameParts.join(',').replace(/^"|"$/g, ''); // Handle quoted names
                     if (!code || !name) return null;
                     return { code, name };
                 }).filter(s => s);
@@ -227,6 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         fetchButton.addEventListener('click', fetchStockData);
+        storeCodeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                fetchButton.click();
+            }
+        });
 
         function fetchStockData() {
             const storeCode = (selectedStoreInfo.code || storeCodeInput.value.trim()).toUpperCase();
