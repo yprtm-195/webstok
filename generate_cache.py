@@ -5,13 +5,27 @@ from datetime import datetime
 
 # --- KONFIGURASI ---
 APPS_SCRIPT_CMS_URL = "https://script.google.com/macros/s/AKfycbxTNN-7FaYzql3TZza6dvPcQRFfizCsq_JAh3ZYrWL6amYkHUZO_RdomRJBslSBBHFQvg/exec"
-OUTPUT_FILE = "live_stock.json"
-STATUS_FILE = "update_status.json"
-LIST_TOKO_FILE = "listtoko.txt"
+
+# Tentukan folder output
+OUTPUT_DIR = "docs"
+
+# File-file output sekarang akan ditempatkan di dalam folder 'docs'
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "live_stock.json")
+STATUS_FILE = os.path.join(OUTPUT_DIR, "update_status.json")
+LIST_TOKO_FILE = os.path.join(OUTPUT_DIR, "listtoko.txt")
 
 # --- FUNGSI-FUNGSI HELPER ---
 
+def ensure_dir(directory):
+    """Memastikan direktori output ada."""
+    if not os.path.exists(directory):
+        print(f"Membuat direktori output: {directory}")
+        os.makedirs(directory)
+
 def fetch_data_from_cms(url):
+    """
+    Mengambil data gabungan (pivot dan product map) dari Google Apps Script CMS.
+    """
     print(f"Mengambil data dari Apps Script CMS: {url}")
     try:
         response = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
@@ -39,6 +53,9 @@ def fetch_data_from_cms(url):
 
 def main():
     print('Memulai proses pembuatan cache live_stock.json menggunakan Python...')
+    
+    # Pastikan direktori output ada
+    ensure_dir(OUTPUT_DIR)
 
     try:
         # 1. Ambil data gabungan dari Apps Script CMS
@@ -101,7 +118,7 @@ def main():
 
         # 5. Tulis file listtoko.txt
         with open(LIST_TOKO_FILE, 'w', encoding='utf-8') as f:
-            f.write("kodetoko,namatoko\n") # Header yang benar untuk listtoko.txt
+            f.write("kodetoko,namatoko\n")
             sorted_stores = sorted(list(unique_stores), key=lambda x: x[0])
             for code, name in sorted_stores:
                 f.write(f"{code},{name}\n")
@@ -114,5 +131,4 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    # Jalankan fungsi utama
     main()
