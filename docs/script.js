@@ -1,51 +1,36 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- Global variables for pre-fetched data ---
-    let MASTER_PRODUCT_LIST = [];
-    let ALL_STOCK_DATA = {}; // To hold all stock data from the JSON file
-    
-    // --- Data Source URL ---
+    let ALL_STOCK_DATA = {};
     const CACHE_URL = 'live_stock.json'; 
 
-    // --- Function to fetch all primary data files on page load ---
     const fetchPrimaryData = async () => {
-        console.log('Fetching primary data from local files...');
+        console.log('Fetching primary data...');
         try {
             const [stockResponse, statusResponse] = await Promise.all([
-                fetch(CACHE_URL).catch(e => { console.error('Cache fetch failed:', e); return { ok: false }; }),
-                fetch('update_status.json').catch(e => { console.error('Status fetch failed:', e); return { ok: false }; })
+                fetch(CACHE_URL).catch(e => ({ ok: false, error: e })),
+                fetch('update_status.json').catch(e => ({ ok: false, error: e }))
             ]);
 
-            // Process live_stock.json
             if (stockResponse.ok) {
                 ALL_STOCK_DATA = await stockResponse.json();
-                console.log(`Successfully loaded stock data for ${Object.keys(ALL_STOCK_DATA).length} stores from ${CACHE_URL}.`);
+                console.log(`Successfully loaded stock data for ${Object.keys(ALL_STOCK_DATA).length} stores.`);
             } else {
-                console.error(`CRITICAL: Failed to load ${CACHE_URL}. App may not function correctly.`);
+                console.error(`CRITICAL: Failed to load ${CACHE_URL}.`);
             }
 
-            // Process update_status.json
             const updateStatusElement = document.getElementById('update-status');
             if (updateStatusElement) {
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
-                    const isoString = statusData.lastUpdated;
-                    
-                    // NEW: Correct timezone handling
-                    const date = new Date(isoString);
-                    const options = {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'
-                    };
-                    const formattedString = date.toLocaleString('id-ID', options);
-
-                    updateStatusElement.textContent = `Update Terakhir: ${formattedString}`;
+                    const date = new Date(statusData.lastUpdated);
+                    const options = { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' };
+                    updateStatusElement.textContent = `Update Terakhir: ${date.toLocaleString('id-ID', options)}`;
                 } else {
                     updateStatusElement.textContent = 'Status update tidak tersedia.';
                 }
             }
         } catch (error) {
-            console.error('An error occurred during primary data fetch:', error);
+            console.error('Error during primary data fetch:', error);
             const updateStatusElement = document.getElementById('update-status');
             if (updateStatusElement) {
                 updateStatusElement.textContent = 'Gagal memuat data pendukung.';
@@ -53,13 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Global Helper Functions ---
     const getFormattedDate = () => {
         const d = new Date();
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        return `${day}${month}${year}`;
+        return `${String(d.getDate()).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${d.getFullYear()}`;
     };
 
     const downloadFile = (filename, content) => {
@@ -67,23 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = filename;
-        link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
-    // --- Main Logic Execution ---
-    fetchPrimaryData().then(() => {
-        const statusContainer = document.getElementById('status-container');
-        if (statusContainer) {
-            runDirectExport(); // Logic for direct.html
-        } else {
-            initializeInteractivePage(); // Logic for index.html
-        }
-    });
-
-    // --- DIRECT EXPORT FUNCTIONS (Refactored to use cache only) ---
     function runDirectExport() {
         const statusText = document.getElementById('status-text');
         const statusProgress = document.getElementById('status-progress');
@@ -92,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!storeCode) {
             statusText.textContent = 'Error: Parameter ?store=[kode_toko] tidak ada di URL.';
-            if (statusProgress) statusProgress.remove();
+            if (statusProgress) statusProgress.style.display = 'none';
             return;
         }
 
@@ -100,42 +69,47 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusProgress) statusProgress.value = 30;
 
         try {
-            // Check if ALL_STOCK_DATA is populated
-            if (Object.keys(ALL_STOCK_DATA).length === 0) {
-                throw new Error(`Cache live_stock.json kosong atau belum termuat.`);
-            }
+            if (Object.keys(ALL_STOCK_DATA).length === 0) throw new Error(`Cache live_stock.json kosong atau belum termuat.`);
             
             const storeData = ALL_STOCK_DATA[storeCode.toUpperCase()];
-            if (!storeData) {
-                throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di file live_stock.json.`);
-            }
+            if (!storeData) throw new Error(`Data untuk toko ${storeCode} tidak ditemukan di file live_stock.json.`);
 
             statusText.textContent = `Memproses data...`;
             if (statusProgress) statusProgress.value = 70;
 
             const header = 'kodeproduk,namaproduk,stok\n';
-            const rows = storeData.map(p => `${p.kodeproduk},"${p.namaproduk.replace(/"/g, '""')}",${p.stock}`).join('\n');
-            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + rows);
+            let csvRows = [];
+
+            // NEW: Handle multiple product codes
+            storeData.forEach(p => {
+                if (Array.isArray(p.kodeproduk)) {
+                    p.kodeproduk.forEach(code => {
+                        csvRows.push(`${code},"${p.namaproduk.replace(/\n/g, '\\n')}",${p.stock}`);
+                    });
+                } else {
+                    csvRows.push(`${p.kodeproduk},"${p.namaproduk.replace(/\n/g, '\\n')}",${p.stock}`);
+                }
+            });
+
+            downloadFile(`stok_${storeCode}_${getFormattedDate()}.csv`, header + csvRows.join('\n'));
             
             statusText.textContent = `Sip, beres! Data siap diunduh.`;
             if (statusProgress) statusProgress.value = 100;
 
             const img = document.createElement('img');
-            img.src = 'sukses.gif'; // Assuming sukses.gif is in the same folder
+            img.src = 'sukses.gif';
             img.alt = 'Success!';
             img.className = 'mt-4';
-
-            if (statusProgress) statusProgress.remove();
             statusText.insertAdjacentElement('afterend', img);
 
         } catch (error) {
             console.error('Proses direct export gagal:', error);
             statusText.textContent = `Waduh, Gagal! ${error.message}`;
-            if (statusProgress) statusProgress.remove();
+        } finally {
+            if (statusProgress) statusProgress.style.display = 'none';
         }
     }
 
-    // --- INTERACTIVE PAGE FUNCTIONS (Refactored to use cache only) ---
     function initializeInteractivePage() {
         const fetchButton = document.getElementById('fetchButton');
         const storeCodeInput = document.getElementById('storeCodeInput');
@@ -163,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const trimmedLine = line.trim();
                     if (!trimmedLine) return null;
                     const [code, ...nameParts] = trimmedLine.split(',');
-                    const name = nameParts.join(',').replace(/^"|"$/g, ''); // Handle quoted names
+                    const name = nameParts.join(',').replace(/^"|"$/g, '');
                     if (!code || !name) return null;
                     return { code, name };
                 }).filter(s => s);
@@ -241,10 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 currentProductList = storeData.map(item => ({
-                    code: item.kodeproduk,
+                    // Handle single or multiple codes for display
+                    code: Array.isArray(item.kodeproduk) ? item.kodeproduk.join(', ') : item.kodeproduk,
                     name: item.namaproduk,
                     stock: item.stock,
-                    image: 'oos.png' // placeholder
+                    image: 'oos.png'
                 }));
                 
                 renderCards(currentProductList);
@@ -304,4 +279,13 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadFile(`pivot_stok_${selectedStoreInfo.code}_${getFormattedDate()}.csv`, csvContent);
         });
     }
+
+    // --- Main Logic Execution ---
+    fetchPrimaryData().then(() => {
+        if (document.getElementById('status-container')) {
+            runDirectExport();
+        } else {
+            initializeInteractivePage();
+        }
+    });
 });
