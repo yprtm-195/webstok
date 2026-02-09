@@ -18,7 +18,9 @@ def ensure_dir(directory):
 def fetch_data_from_cms(url):
     print(f"Mengambil data dari Apps Script CMS: {url}")
     try:
-        response = requests.get(url, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+        # Tambahkan parameter acak untuk cache-busting
+        url_with_cache_buster = f"{url}?v={datetime.now().timestamp()}"
+        response = requests.get(url_with_cache_buster, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
         response.raise_for_status() 
         json_response = response.json()
         
@@ -34,9 +36,8 @@ def fetch_data_from_cms(url):
         raise
 
 # --- FUNGSI UTAMA ---
-
 def main():
-    print('Memulai proses pembuatan cache live_stock.json menggunakan Python...')
+    print('Memulai proses pembuatan cache live_stock.json menggunakan Python (Fix Cache-Busting)...')
     ensure_dir("docs")
 
     try:
@@ -48,38 +49,45 @@ def main():
             print("Tidak ada data pivot dari Apps Script CMS untuk diproses. Keluar.")
             return
 
-        print('Memulai transformasi data (un-pivot) ke format live_stock.json dan pembuatan listtoko.txt...')
+        print('Memulai transformasi data (un-pivot) ke format live_stock.json...')
         all_stock_data_transformed = {}
         headers = pivot_data[0]
-        metadata_cols = ['Kode toko', 'Nama Toko', 'Cabang']
-        product_name_headers = [h for h in headers if h not in metadata_cols]
-        unique_stores = set()
         
-        for row_idx in range(1, len(pivot_data)):
-            row = pivot_data[row_idx]
-            store_code = row[0]
-            store_name = row[1]
+        # Cari index kolom berdasarkan nama header (tanpa lat/lon)
+        idx_kode_toko = headers.index('Kode toko') if 'Kode toko' in headers else -1
+        idx_nama_toko = headers.index('Nama Toko') if 'Nama Toko' in headers else -1
+        idx_cabang = headers.index('Cabang') if 'Cabang' in headers else -1
+        
+        # Validasi
+        if idx_kode_toko == -1:
+            raise Exception("Kolom 'Kode toko' tidak ditemukan di header data pivot.")
+
+        # Header produk
+        product_name_headers = [h for h in headers if h not in ['Kode toko', 'Nama Toko', 'Cabang']]
+
+        for row in pivot_data[1:]:
+            store_code = row[idx_kode_toko]
+            store_name = row[idx_nama_toko] if idx_nama_toko > -1 else "N/A"
             
             if not store_code:
-                print(f"Peringatan: Baris {row_idx} tidak memiliki Kode toko, dilewati.")
+                print(f"Peringatan: Baris tidak memiliki Kode toko, dilewati.")
                 continue
 
-            unique_stores.add((store_code, store_name))
             products_for_this_store = []
             
             for col_idx, header_name in enumerate(headers):
                 if header_name in product_name_headers:
                     product_name = header_name
                     stock = row[col_idx]
-                    # NEW: Get array of codes, or default to ['N/A']
                     kodeproduk_array = product_code_map.get(product_name, ['N/A'])
                     
                     products_for_this_store.append({
-                        "kodeproduk": kodeproduk_array, # This is now an array
+                        "kodeproduk": kodeproduk_array,
                         "namaproduk": product_name,
                         "stock": int(stock) if str(stock).isdigit() else 0
                     })
             
+            # Buat struktur lama: store_code -> array of products
             all_stock_data_transformed[store_code] = products_for_this_store
 
         print(f"Transformasi data selesai. Siap menyimpan data untuk {len(all_stock_data_transformed)} toko.")
@@ -88,17 +96,27 @@ def main():
             json.dump(all_stock_data_transformed, f, indent=2, ensure_ascii=False)
         print(f"Berhasil generate {OUTPUT_FILE}.")
 
+        # Update status tetap sama
         update_status = {"lastUpdated": datetime.now().isoformat()}
         with open(STATUS_FILE, 'w', encoding='utf-8') as f:
             json.dump(update_status, f, indent=2, ensure_ascii=False)
         print(f"Berhasil generate {STATUS_FILE}.")
-
+        
+        # listtoko.txt tetap sama, tapi pastikan diambil dari data yang benar
         with open(LIST_TOKO_FILE, 'w', encoding='utf-8') as f:
             f.write("kodetoko,namatoko\n")
+            # Ambil dari pivot data asli untuk listtoko.txt
+            unique_stores = set()
+            for row in pivot_data[1:]:
+                store_code = row[idx_kode_toko]
+                store_name = row[idx_nama_toko] if idx_nama_toko > -1 else "N/A"
+                if store_code:
+                    unique_stores.add((store_code, store_name))
+
             sorted_stores = sorted(list(unique_stores), key=lambda x: x[0])
             for code, name in sorted_stores:
                 f.write(f"{code},{name}\n")
-        print(f"Berhasil generate {LIST_TOKO_FILE} dengan {len(unique_stores)} toko.")
+        print(f"Berhasil generate {LIST_TOKO_FILE}.")
 
         print('\nProses pembuatan cache selesai dengan sukses!')
 
